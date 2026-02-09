@@ -20,8 +20,7 @@ The Quantum Circuit Debugger is a web-based platform for designing, simulating, 
 - **Metrics**: Compare original vs. optimized depth and operation counts.
 
 ### 4. Export & Sharing
-- **Code Export**: Generate Python (Qiskit) and OpenQASM code.
-- **LaTeX Export**: Generate professional circuit diagrams in LaTeX.
+- **Code Export**: Generate Python (Qiskit, Cirq, PennyLane), OpenQASM, and LaTeX code.
 - **Image Export**: Download circuit diagrams as PNG images.
 - **Save/Load**: Save circuit designs to JSON files and reload them later.
 

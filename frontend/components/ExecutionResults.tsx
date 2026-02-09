@@ -4,12 +4,19 @@ import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { ExecutionResult } from '../utils/api';
 
+/**
+ * Props for the ExecutionResults component.
+ */
 interface ExecutionResultsProps {
-  result: ExecutionResult | null;
-  error: string | null;
-  isRunning: boolean;
+  result: ExecutionResult | null; // The execution result data
+  error: string | null; // Error message if execution failed
+  isRunning: boolean; // Loading state
 }
 
+/**
+ * Displays the results of a circuit execution.
+ * Renders a bar chart of state probabilities and optionally statevector details.
+ */
 export const ExecutionResults: React.FC<ExecutionResultsProps> = ({ result, error, isRunning }) => {
   if (isRunning) {
     return (
