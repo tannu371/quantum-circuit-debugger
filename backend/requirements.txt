@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+qiskit
+qiskit-aer
+matplotlib
+pylatexenc
+contextlib2; python_version < "3.10"
