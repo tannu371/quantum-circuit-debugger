@@ -1,7 +1,8 @@
 fastapi
 uvicorn
+pydantic
 qiskit
 qiskit-aer
-matplotlib
+numpy
 pylatexenc
-contextlib2; python_version < "3.10"
+matplotlib
