@@ -8,7 +8,7 @@
 import axios from 'axios';
 
 /** Base URL of the FastAPI backend. */
-const API_URL = 'http://localhost:8000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 // ---------------------------------------------------------------------------
 // Shared types
@@ -88,7 +88,25 @@ export interface VQEResponse {
     most_likely_state?: string;
     ansatz_depth?: number;
     code?: Record<string, string>;
+    hamiltonian_bases?: string[];
+    hamiltonian_scales?: number[];
     message?: string;
+    error?: string;
+}
+
+/** Quantum Walk (CTQW) execution result. */
+export interface QuantumWalkResponse {
+    status: string;
+    probability_evolution?: { time: number; probabilities: number[] }[];
+    final_counts?: Record<string, number>;
+    most_likely_vertex?: number;
+    most_likely_state?: string;
+    num_vertices?: number;
+    num_qubits?: number;
+    num_steps?: number;
+    dt?: number;
+    initial_vertex?: number;
+    code?: Record<string, string>;
     error?: string;
 }
 
@@ -303,20 +321,67 @@ export const runVQE = async (
     maxIter: number = 100,
     optimizer: string = 'COBYLA',
     shots: number = 1024,
+    adjacencyMatrix?: number[][],
+    problemType?: string,
+    invertAdjacency?: boolean,
 ): Promise<VQEResponse> => {
     try {
-        const response = await axios.post(`${API_URL}/vqe`, {
+        const payload: any = {
             num_qubits: numQubits,
-            hamiltonian_bases: hamiltonianBases,
-            hamiltonian_scales: hamiltonianScales,
             ansatz_depth: ansatzDepth,
             max_iter: maxIter,
             optimizer,
             shots,
-        });
+        };
+        if (adjacencyMatrix && problemType === 'maxcut') {
+            payload.adjacency_matrix = adjacencyMatrix;
+            payload.problem_type = 'maxcut';
+            payload.invert_adjacency = invertAdjacency ?? true;
+        } else {
+            payload.hamiltonian_bases = hamiltonianBases;
+            payload.hamiltonian_scales = hamiltonianScales;
+        }
+        const response = await axios.post(`${API_URL}/vqe`, payload);
         return response.data;
     } catch (error) {
         console.error('Error running VQE:', error);
+        throw error;
+    }
+};
+
+/**
+ * Run a Continuous-Time Quantum Walk (CTQW) on a graph.
+ *
+ * @param topology        Graph topology: cycle, path, complete, star, grid.
+ * @param numVertices     Number of graph vertices.
+ * @param initialVertex   Starting vertex (0-indexed).
+ * @param numSteps        Number of time snapshots.
+ * @param dt              Time step size.
+ * @param shots           Measurement shots (default 1024).
+ * @param adjacencyMatrix Optional custom adjacency matrix.
+ */
+export const runQuantumWalk = async (
+    topology: string,
+    numVertices: number,
+    initialVertex: number = 0,
+    numSteps: number = 10,
+    dt: number = 0.5,
+    shots: number = 1024,
+    adjacencyMatrix?: number[][],
+): Promise<QuantumWalkResponse> => {
+    try {
+        const response = await axios.post(`${API_URL}/quantum-walk`, {
+            topology,
+            num_vertices: numVertices,
+            adjacency_matrix: adjacencyMatrix || null,
+            initial_vertex: initialVertex,
+            num_steps: numSteps,
+            dt,
+            shots,
+        });
+        return response.data;
+    } catch (error) {
+        console.error('Error running quantum walk:', error);
         throw error;
     }
 };

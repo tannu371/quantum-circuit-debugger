@@ -125,14 +125,29 @@ class VQERequest(BaseModel):
 
     Accepts Hamiltonian in basis-string format (e.g. ``["ZZ", "ZI"]`` with
     corresponding ``scales``).  Builds its own RY ansatz internally.
+
+    Alternatively, supply ``adjacency_matrix`` + ``problem_type="maxcut"``
+    and the backend will auto-generate the Hamiltonian bases/scales.
     """
 
     num_qubits: int = Field(..., ge=2, description="Number of qubits (≥ 2).")
-    hamiltonian_bases: List[str] = Field(
-        ..., description='Pauli basis strings, e.g. ["ZZ","ZI"].'
+    hamiltonian_bases: Optional[List[str]] = Field(
+        None, description='Pauli basis strings, e.g. ["ZZ","ZI"].'
     )
-    hamiltonian_scales: List[float] = Field(
-        ..., description="Scale factor for each basis term."
+    hamiltonian_scales: Optional[List[float]] = Field(
+        None, description="Scale factor for each basis term."
+    )
+    adjacency_matrix: Optional[List[List[float]]] = Field(
+        None,
+        description="Adjacency matrix for graph problems (MaxCut clustering).",
+    )
+    problem_type: Optional[str] = Field(
+        None,
+        description='Problem type: "maxcut" or None for custom Hamiltonian.',
+    )
+    invert_adjacency: bool = Field(
+        True,
+        description="If True, use distance matrix (1 − A) for MaxCut Hamiltonian.",
     )
     ansatz_depth: int = Field(1, ge=1, le=10, description="Ansatz layer depth (1–10).")
     max_iter: int = Field(100, ge=1, le=1000)
@@ -156,6 +171,8 @@ class VQEResponse(BaseModel):
     most_likely_state: Optional[str] = None
     ansatz_depth: Optional[int] = None
     code: Optional[Dict[str, str]] = None
+    hamiltonian_bases: Optional[List[str]] = None
+    hamiltonian_scales: Optional[List[float]] = None
     message: Optional[str] = None
     error: Optional[str] = None
 
@@ -267,3 +284,44 @@ class QAOAResponse(BaseModel):
     message: Optional[str] = None
     error: Optional[str] = None
 
+
+# ---------------------------------------------------------------------------
+# Quantum Walk models
+# ---------------------------------------------------------------------------
+
+
+class QuantumWalkRequest(BaseModel):
+    """
+    Request body for the quantum walk endpoint.
+
+    Provide either ``adjacency_matrix`` directly or ``topology`` +
+    ``num_vertices`` to auto-generate a standard graph.
+    """
+
+    topology: Optional[str] = Field(
+        None,
+        description="Graph topology: cycle, path, complete, star, grid.",
+    )
+    num_vertices: int = Field(4, ge=2, le=16, description="Number of graph vertices.")
+    adjacency_matrix: Optional[List[List[float]]] = None
+    initial_vertex: int = Field(0, ge=0, description="Starting vertex (0-indexed).")
+    num_steps: int = Field(10, ge=1, le=50, description="Time snapshots.")
+    dt: float = Field(0.5, gt=0, description="Time step size.")
+    shots: int = Field(1024, ge=1)
+
+
+class QuantumWalkResponse(BaseModel):
+    """Response body for quantum walk execution."""
+
+    status: str
+    probability_evolution: Optional[List[dict]] = None
+    final_counts: Optional[Dict[str, int]] = None
+    most_likely_vertex: Optional[int] = None
+    most_likely_state: Optional[str] = None
+    num_vertices: Optional[int] = None
+    num_qubits: Optional[int] = None
+    num_steps: Optional[int] = None
+    dt: Optional[float] = None
+    initial_vertex: Optional[int] = None
+    code: Optional[Dict[str, str]] = None
+    error: Optional[str] = None

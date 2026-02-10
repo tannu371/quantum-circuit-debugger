@@ -23,6 +23,8 @@ from models import (
     QFTResponse,
     QAOARequest,
     QAOAResponse,
+    QuantumWalkRequest,
+    QuantumWalkResponse,
 )
 from simulation import (
     build_circuit,
@@ -32,7 +34,12 @@ from simulation import (
     build_qft_circuit,
 )
 from optimization import optimize_circuit
-from algorithms import run_optimization, run_vqe, generate_vqe_code, run_qaoa, generate_qaoa_code
+from algorithms import (
+    run_optimization, run_vqe, generate_vqe_code,
+    generate_maxcut_code, maxcut_hamiltonian_from_adjacency,
+    run_qaoa, generate_qaoa_code,
+    run_quantum_walk, generate_walk_code, generate_graph,
+)
 
 import traceback
 
@@ -359,10 +366,33 @@ async def run_vqe_endpoint(request: VQERequest):
     history, and auto-generated code for all five frameworks.
     """
     try:
+        # Determine bases/scales from adjacency matrix or direct input
+        is_maxcut = (
+            request.problem_type == "maxcut" and request.adjacency_matrix is not None
+        )
+
+        if is_maxcut:
+            h_bases, h_scales = maxcut_hamiltonian_from_adjacency(
+                request.adjacency_matrix,
+                invert=request.invert_adjacency,
+            )
+            # Auto-derive num_qubits from adjacency matrix dimensions
+            n_qubits = len(request.adjacency_matrix)
+        else:
+            h_bases = request.hamiltonian_bases or []
+            h_scales = request.hamiltonian_scales or []
+            n_qubits = request.num_qubits
+
+        if not h_bases:
+            raise HTTPException(
+                status_code=400,
+                detail="Provide hamiltonian_bases/scales or adjacency_matrix with problem_type='maxcut'.",
+            )
+
         result = run_vqe(
-            num_qubits=request.num_qubits,
-            hamiltonian_bases=request.hamiltonian_bases,
-            hamiltonian_scales=request.hamiltonian_scales,
+            num_qubits=n_qubits,
+            hamiltonian_bases=h_bases,
+            hamiltonian_scales=h_scales,
             ansatz_depth=request.ansatz_depth,
             max_iter=request.max_iter,
             method=request.optimizer,
@@ -372,14 +402,22 @@ async def run_vqe_endpoint(request: VQERequest):
         # Generate code for all frameworks
         code = {}
         for fw in ("qiskit", "pennylane", "cirq", "qsharp", "qasm"):
-            code[fw] = generate_vqe_code(
-                num_qubits=request.num_qubits,
-                hamiltonian_bases=request.hamiltonian_bases,
-                hamiltonian_scales=request.hamiltonian_scales,
-                opt_params=result["optimal_params"],
-                ansatz_depth=request.ansatz_depth,
-                framework=fw,
-            )
+            if is_maxcut:
+                code[fw] = generate_maxcut_code(
+                    adjacency_matrix=request.adjacency_matrix,
+                    opt_params=result["optimal_params"],
+                    invert_adjacency=request.invert_adjacency,
+                    framework=fw,
+                )
+            else:
+                code[fw] = generate_vqe_code(
+                    num_qubits=n_qubits,
+                    hamiltonian_bases=h_bases,
+                    hamiltonian_scales=h_scales,
+                    opt_params=result["optimal_params"],
+                    ansatz_depth=request.ansatz_depth,
+                    framework=fw,
+                )
 
         return VQEResponse(
             status="completed",
@@ -391,7 +429,70 @@ async def run_vqe_endpoint(request: VQERequest):
             most_likely_state=result["most_likely_state"],
             ansatz_depth=result["ansatz_depth"],
             code=code,
+            hamiltonian_bases=h_bases,
+            hamiltonian_scales=h_scales,
             message=result.get("message"),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+#  Quantum Walk endpoint
+# ---------------------------------------------------------------------------
+
+
+@app.post("/quantum-walk", response_model=QuantumWalkResponse)
+async def run_quantum_walk_endpoint(request: QuantumWalkRequest):
+    """
+    Run a Continuous-Time Quantum Walk (CTQW) on a graph.
+
+    Provide ``topology`` + ``num_vertices`` to auto-generate a graph, or
+    supply a custom ``adjacency_matrix``.
+    """
+    try:
+        # Build adjacency matrix
+        if request.adjacency_matrix:
+            adj = request.adjacency_matrix
+        elif request.topology:
+            adj = generate_graph(request.topology, request.num_vertices)
+        else:
+            adj = generate_graph("cycle", request.num_vertices)
+
+        result = run_quantum_walk(
+            adjacency_matrix=adj,
+            initial_vertex=request.initial_vertex,
+            num_steps=request.num_steps,
+            dt=request.dt,
+            shots=request.shots,
+        )
+
+        # Generate code for all frameworks
+        code = {}
+        for fw in ("qiskit", "pennylane", "cirq", "qsharp", "qasm"):
+            code[fw] = generate_walk_code(
+                adjacency_matrix=adj,
+                initial_vertex=request.initial_vertex,
+                num_steps=request.num_steps,
+                dt=request.dt,
+                framework=fw,
+            )
+
+        return QuantumWalkResponse(
+            status="completed",
+            probability_evolution=result["probability_evolution"],
+            final_counts=result["final_counts"],
+            most_likely_vertex=result["most_likely_vertex"],
+            most_likely_state=result["most_likely_state"],
+            num_vertices=result["num_vertices"],
+            num_qubits=result["num_qubits"],
+            num_steps=result["num_steps"],
+            dt=result["dt"],
+            initial_vertex=result["initial_vertex"],
+            code=code,
         )
     except Exception as e:
         traceback.print_exc()

@@ -4,5 +4,6 @@ pydantic
 qiskit
 qiskit-aer
 numpy
+scipy
 pylatexenc
 matplotlib
