@@ -1,173 +1,398 @@
+"""
+main.py — FastAPI application for the Quantum Circuit Debugger.
+
+Exposes RESTful endpoints for:
+  • Circuit execution (measurement counts + statevector).
+  • Circuit optimisation via Qiskit's transpiler.
+  • Export to LaTeX, PNG image, and Bloch sphere visualisation.
+  • Advanced algorithms (VQE / QAOA).
+  • Quantum Fourier Transform (QFT) construction and simulation.
+"""
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from models import CircuitRequest, ExecutionResult
-from simulation import build_circuit, run_circuit, get_statevector, get_bloch_image
+
+from models import (
+    CircuitRequest,
+    ExecutionResult,
+    AlgorithmRequest,
+    AlgorithmResponse,
+    VQERequest,
+    VQEResponse,
+    QFTRequest,
+    QFTResponse,
+    QAOARequest,
+    QAOAResponse,
+)
+from simulation import (
+    build_circuit,
+    run_circuit,
+    get_statevector,
+    get_bloch_image,
+    build_qft_circuit,
+)
 from optimization import optimize_circuit
+from algorithms import run_optimization, run_vqe, generate_vqe_code, run_qaoa, generate_qaoa_code
 
-app = FastAPI(title="Quantum Circuit Debugger API")
+import traceback
 
-# Configure CORS
+# ---------------------------------------------------------------------------
+# Application setup
+# ---------------------------------------------------------------------------
+
+app = FastAPI(
+    title="Quantum Circuit Debugger API",
+    description="Backend API for building, simulating, optimising, and exporting quantum circuits.",
+    version="2.0.0",
+)
+
+# Allow cross-origin requests from the Next.js frontend during development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # For development, allow all origins
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+
+# ---------------------------------------------------------------------------
+# Health / Root
+# ---------------------------------------------------------------------------
+
+
 @app.get("/")
 def read_root():
-    """
-    Root endpoint to verify the API is running.
-    """
+    """Root endpoint — verify the API is running."""
     return {"message": "Quantum Circuit Debugger API is running"}
+
 
 @app.get("/health")
 def health_check():
-    """
-    Health check endpoint for monitoring purposes.
-    """
+    """Lightweight health-check for monitoring and load-balancer probes."""
     return {"status": "ok"}
 
+
+# ---------------------------------------------------------------------------
+# Circuit execution
+# ---------------------------------------------------------------------------
+
+
 @app.post("/execute", response_model=ExecutionResult)
-async def execute_circuit(request: CircuitRequest):
+async def execute_circuit_endpoint(request: CircuitRequest):
     """
-    Executes a quantum circuit simulation and returns counts and statevector.
-    
-    Args:
-        request (CircuitRequest): The circuit definition and execution parameters.
-        
-    Returns:
-        ExecutionResult: The simulation results including counts and statevector.
+    Simulate a quantum circuit and return measurement counts + statevector.
+
+    The circuit is built from the list of gates, executed on the Aer
+    simulator for the requested number of shots, and the statevector is
+    extracted from a separate measurement-free run.
     """
     try:
-        # Convert Pydantic models to list of dicts for builder
         gates_data = [gate.model_dump() for gate in request.gates]
-        
         circuit = build_circuit(request.num_qubits, gates_data)
-        
-        # Run simulation to get counts
+
+        # Measurement counts
         result_counts = run_circuit(circuit, shots=request.shots)
         if "error" in result_counts:
-             raise HTTPException(status_code=500, detail=result_counts["error"])
-             
-        # Run simulation to get statevector
+            raise HTTPException(status_code=500, detail=result_counts["error"])
+
+        # Statevector (best-effort — does not block counts)
         result_sv = get_statevector(circuit)
         if "error" in result_sv:
-             # Statevector error shouldn't block counts return necessarily, but let's report it
-             print(f"Statevector error: {result_sv['error']}")
-        
+            print(f"[WARN] Statevector error: {result_sv['error']}")
+
         return ExecutionResult(
             counts=result_counts.get("counts", {}),
-            statevector=result_sv.get("statevector"), 
-            status="completed"
+            statevector=result_sv.get("statevector"),
+            status="completed",
         )
+    except HTTPException:
+        raise
     except Exception as e:
-        import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Circuit optimisation
+# ---------------------------------------------------------------------------
+
 
 @app.post("/optimize")
 async def optimize_circuit_endpoint(request: CircuitRequest):
     """
-    Optimizes the given quantum circuit and returns analysis metrics.
-    
-    Args:
-        request (CircuitRequest): The circuit definition to optimize.
-        
-    Returns:
-        dict: Optimization results including original/optimized depth and gate counts.
+    Optimise the circuit using Qiskit's transpiler (level 3) and return
+    a comparison of original vs. optimised depth and gate counts.
     """
     try:
         gates_data = [gate.model_dump() for gate in request.gates]
         circuit = build_circuit(request.num_qubits, gates_data)
-        
+
         result = optimize_circuit(circuit)
         if "error" in result:
-             raise HTTPException(status_code=500, detail=result["error"])
-             
+            raise HTTPException(status_code=500, detail=result["error"])
+
         return result
+    except HTTPException:
+        raise
     except Exception as e:
-        import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# ---------------------------------------------------------------------------
+# Export endpoints
+# ---------------------------------------------------------------------------
+
+
 @app.post("/export/latex")
 async def export_latex(request: CircuitRequest):
-    """
-    Generates LaTeX source code for the quantum circuit.
-    
-    Args:
-        request (CircuitRequest): The circuit definition.
-        
-    Returns:
-        dict: A dictionary containing the 'latex' source string.
-    """
+    """Generate LaTeX source code for the quantum circuit diagram."""
     try:
         gates_data = [gate.model_dump() for gate in request.gates]
         circuit = build_circuit(request.num_qubits, gates_data)
-        
-        # specific to pylatexenc being installed
-        latex_source = circuit.draw(output='latex_source')
+        latex_source = circuit.draw(output="latex_source")
         return {"latex": latex_source}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.post("/export/image")
 async def export_image(request: CircuitRequest):
-    """
-    Generates a PNG image of the quantum circuit.
-    
-    Args:
-        request (CircuitRequest): The circuit definition.
-        
-    Returns:
-        dict: A dictionary containing the 'image_base64' string.
-    """
+    """Render the circuit as a PNG image and return it Base64-encoded."""
     try:
         import base64
         from io import BytesIO
-        
+
         gates_data = [gate.model_dump() for gate in request.gates]
         circuit = build_circuit(request.num_qubits, gates_data)
-        
-        # Draw to matplotlib figure
-        fig = circuit.draw(output='mpl')
-        
-        # Save to buffer
+
+        fig = circuit.draw(output="mpl")
         buf = BytesIO()
         fig.savefig(buf, format="png")
         buf.seek(0)
         img_str = base64.b64encode(buf.read()).decode("utf-8")
-        
+
         return {"image_base64": img_str}
     except Exception as e:
-        import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.post("/export/bloch")
 async def export_bloch_sphere_endpoint(request: CircuitRequest):
-    """
-    Generates a Bloch sphere visualization of the final statevector.
-    
-    Args:
-        request (CircuitRequest): The circuit definition.
-        
-    Returns:
-        dict: A dictionary containing the 'image_base64' string.
-    """
+    """Generate per-qubit Bloch sphere images (Base64 PNGs)."""
     try:
-        # Convert Pydantic models to list of dicts for builder
         gates_data = [gate.model_dump() for gate in request.gates]
         circuit = build_circuit(request.num_qubits, gates_data)
-        
+
         result = get_bloch_image(circuit)
         if "error" in result:
-             raise HTTPException(status_code=500, detail=result["error"])
-             
+            raise HTTPException(status_code=500, detail=result["error"])
+
         return result
+    except HTTPException:
+        raise
     except Exception as e:
-        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Advanced algorithms (VQE / QAOA)
+# ---------------------------------------------------------------------------
+
+
+@app.post("/run-algorithm", response_model=AlgorithmResponse)
+async def run_algorithm_endpoint(request: AlgorithmRequest):
+    """
+    Run a variational quantum algorithm (VQE or QAOA).
+
+    The user's circuit acts as the ansatz; rotation gates become tuneable
+    parameters that the classical optimiser adjusts to minimise the
+    Hamiltonian expectation value.
+    """
+    try:
+        result = run_optimization(
+            circuit_data=request.circuit,
+            hamiltonian_str=request.hamiltonian,
+            max_iter=request.max_iter,
+            method=request.optimizer,
+        )
+
+        if result.get("status") == "failed":
+            raise HTTPException(status_code=500, detail=result.get("error"))
+
+        return AlgorithmResponse(
+            status="completed",
+            optimal_energy=result.get("optimal_energy"),
+            optimal_params=result.get("optimal_params"),
+            history=result.get("history"),
+            message=result.get("message"),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Quantum Fourier Transform (QFT)
+# ---------------------------------------------------------------------------
+
+
+@app.post("/qft", response_model=QFTResponse)
+async def run_qft_endpoint(request: QFTRequest):
+    """
+    Build and simulate a Quantum Fourier Transform circuit.
+
+    Optionally initialise the register to a specific bitstring before
+    applying QFT (or inverse QFT).  Returns measurement counts,
+    statevector, circuit depth, and total gate count.
+    """
+    try:
+        # Build the QFT circuit
+        qft_circuit = build_qft_circuit(request.num_qubits, inverse=request.inverse)
+
+        # Optionally prepend X gates to set the initial state
+        if request.initial_state:
+            from qiskit import QuantumCircuit
+
+            init_qc = QuantumCircuit(request.num_qubits)
+            for i, bit in enumerate(reversed(request.initial_state)):
+                if bit == "1":
+                    init_qc.x(i)
+            full_circuit = init_qc.compose(qft_circuit)
+        else:
+            full_circuit = qft_circuit
+
+        # Gather metrics
+        depth = full_circuit.depth()
+        num_gates = sum(full_circuit.count_ops().values())
+
+        # Simulate
+        result_counts = run_circuit(full_circuit, shots=request.shots)
+        result_sv = get_statevector(full_circuit)
+
+        return QFTResponse(
+            counts=result_counts.get("counts"),
+            statevector=result_sv.get("statevector"),
+            circuit_depth=depth,
+            num_gates=num_gates,
+            status="completed",
+        )
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+#  QAOA endpoint
+# ---------------------------------------------------------------------------
+
+
+@app.post("/qaoa", response_model=QAOAResponse)
+async def run_qaoa_endpoint(request: QAOARequest):
+    """
+    Run a full QAOA optimization for an Ising-model cost Hamiltonian.
+
+    Accepts an interaction matrix J_{ij}, number of QAOA layers, and
+    optimizer settings.  Returns optimal parameters, measurement counts,
+    statevector probabilities, convergence history, and auto-generated
+    code for Qiskit, PennyLane, Cirq, Q#, and OpenQASM.
+    """
+    try:
+        result = run_qaoa(
+            num_qubits=request.num_qubits,
+            interaction_matrix=request.interaction_matrix,
+            p_layers=request.p_layers,
+            max_iter=request.max_iter,
+            method=request.optimizer,
+            shots=request.shots,
+            linear_terms=request.linear_terms,
+        )
+
+        # Generate code for all frameworks
+        code = {}
+        for fw in ("qiskit", "pennylane", "cirq", "qsharp", "qasm"):
+            code[fw] = generate_qaoa_code(
+                num_qubits=request.num_qubits,
+                interaction_matrix=request.interaction_matrix,
+                opt_gammas=result["optimal_gammas"],
+                opt_betas=result["optimal_betas"],
+                framework=fw,
+                linear_terms=request.linear_terms,
+            )
+
+        return QAOAResponse(
+            status="completed",
+            optimal_energy=result["optimal_energy"],
+            optimal_gammas=result["optimal_gammas"],
+            optimal_betas=result["optimal_betas"],
+            optimal_params=result["optimal_params"],
+            history=result["history"],
+            counts=result["counts"],
+            probabilities=result["probabilities"],
+            most_likely_state=result["most_likely_state"],
+            p_layers=result["p_layers"],
+            code=code,
+            message=result.get("message"),
+        )
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+#  VQE (standalone) endpoint
+# ---------------------------------------------------------------------------
+
+
+@app.post("/vqe", response_model=VQEResponse)
+async def run_vqe_endpoint(request: VQERequest):
+    """
+    Run a full standalone VQE optimization.
+
+    Accepts Hamiltonian bases/scales, builds an RY ansatz internally,
+    optimises parameters, and returns measurement counts, convergence
+    history, and auto-generated code for all five frameworks.
+    """
+    try:
+        result = run_vqe(
+            num_qubits=request.num_qubits,
+            hamiltonian_bases=request.hamiltonian_bases,
+            hamiltonian_scales=request.hamiltonian_scales,
+            ansatz_depth=request.ansatz_depth,
+            max_iter=request.max_iter,
+            method=request.optimizer,
+            shots=request.shots,
+        )
+
+        # Generate code for all frameworks
+        code = {}
+        for fw in ("qiskit", "pennylane", "cirq", "qsharp", "qasm"):
+            code[fw] = generate_vqe_code(
+                num_qubits=request.num_qubits,
+                hamiltonian_bases=request.hamiltonian_bases,
+                hamiltonian_scales=request.hamiltonian_scales,
+                opt_params=result["optimal_params"],
+                ansatz_depth=request.ansatz_depth,
+                framework=fw,
+            )
+
+        return VQEResponse(
+            status="completed",
+            optimal_energy=result["optimal_energy"],
+            optimal_params=result["optimal_params"],
+            history=result["history"],
+            counts=result["counts"],
+            probabilities=result["probabilities"],
+            most_likely_state=result["most_likely_state"],
+            ansatz_depth=result["ansatz_depth"],
+            code=code,
+            message=result.get("message"),
+        )
+    except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))

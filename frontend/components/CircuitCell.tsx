@@ -67,7 +67,7 @@ export const CircuitCell: React.FC<CircuitCellProps> = ({ id, gate, params, onRe
 
   const handleDoubleClick = (e: React.MouseEvent) => {
       e.stopPropagation();
-      if (gate && ['RX', 'RY', 'RZ'].includes(gate) && onUpdateParams) {
+      if (gate && ['RX', 'RY', 'RZ', 'CRX', 'CRY', 'CRZ'].includes(gate) && onUpdateParams) {
           // Calculate position
           if (cellRef.current) {
               const rect = cellRef.current.getBoundingClientRect();
@@ -122,14 +122,14 @@ export const CircuitCell: React.FC<CircuitCellProps> = ({ id, gate, params, onRe
             isOver ? 'bg-cyan-900/40 border-cyan-500' : 'bg-gray-800/20 hover:bg-gray-800/40',
             isEditing ? 'ring-1 ring-cyan-500 bg-gray-800/60' : ''
         )}
-        title={gate && ['RX', 'RY', 'RZ'].includes(gate) ? "Double-click to edit angle" : undefined}
+        title={gate && ['RX', 'RY', 'RZ', 'CRX', 'CRY', 'CRZ'].includes(gate) ? "Double-click to edit angle" : undefined}
         >
         {gate ? (
             <div className="relative flex flex-col items-center">
                 <Gate id={`placed-${id}`} name={gate} className="shadow-lg w-10 h-10 text-xs" />
                 
                 {/* Display Value */}
-                {params && ['RX', 'RY', 'RZ'].includes(gate) && !isEditing && (
+                {params && ['RX', 'RY', 'RZ', 'CRX', 'CRY', 'CRZ'].includes(gate) && !isEditing && (
                     <span className="absolute -bottom-3 text-[9px] text-cyan-400 font-mono bg-black/80 px-1 rounded pointer-events-none whitespace-nowrap z-10">
                         {(params[0] / Math.PI).toFixed(2).replace('.00', '')}π
                     </span>

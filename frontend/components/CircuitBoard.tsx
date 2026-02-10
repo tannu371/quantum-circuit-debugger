@@ -1,8 +1,9 @@
 "use client";
 import React, { useState, useEffect } from 'react';
-import { DndContext, DragEndEvent } from '@dnd-kit/core';
+import { DndContext, DragEndEvent, DragStartEvent, DragOverlay } from '@dnd-kit/core';
 import { CircuitCell } from './CircuitCell';
 import { GatePalette } from './GatePalette';
+import AlgorithmModal from './AlgorithmModal';
 import { useCircuit } from '../hooks/useCircuit';
 import { RotateCcw, RotateCw, Trash2, Play, Loader2, Zap, Download, Code, FileText, Image as ImageIcon, FileCode, Save, Upload } from 'lucide-react';
 import { ExecutionResults } from './ExecutionResults';
@@ -22,6 +23,12 @@ export const CircuitBoard: React.FC = () => {
   const [result, setResult] = useState<ExecutionResult | null>(null);
   const [optResult, setOptResult] = useState<OptimizationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  
+  // Algorithm Modal State
+  const [isAlgorithmModalOpen, setIsAlgorithmModalOpen] = useState(false);
+
+  // Track the currently dragged gate for the DragOverlay
+  const [activeGate, setActiveGate] = useState<string | null>(null);
   
   // UI state for code export viewing
   const [showCode, setShowCode] = useState<'qiskit' | 'qasm' | 'latex' | 'pennylane' | 'cirq' | 'qsharp' | null>(null);
@@ -65,10 +72,19 @@ export const CircuitBoard: React.FC = () => {
 
 
   /**
+   * Called when a drag begins — stores the gate name so DragOverlay can
+   * render a floating clone while the original stays in place.
+   */
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveGate((event.active.data.current?.name as string) || null);
+  };
+
+  /**
    * Handles the end of a drag event.
    * If a gate is dropped onto a valid cell, it updates the circuit state.
    */
   const handleDragEnd = (event: DragEndEvent) => {
+    setActiveGate(null);
     const { active, over } = event;
     if (over && active.data.current) {
         const gateName = active.data.current.name as string;
@@ -77,54 +93,139 @@ export const CircuitBoard: React.FC = () => {
     }
   };
 
+  /** Gates that carry rotation / phase parameters. */
+  const PARAMETERISED_GATES = new Set(['RX', 'RY', 'RZ']);
+
+  /**
+   * Map from a *target* gate name to the controlled version sent to the
+   * backend.  When a • control is paired with one of these gates at the
+   * same step, the controlled name is used instead.
+   */
+  const CONTROLLED_NAME: Record<string, string> = {
+    '⊕': 'CNOT', // • + ⊕ → CNOT
+    'X': 'CX',
+    'Y': 'CY',
+    'Z': 'CZ',
+    'H': 'CH',
+    'RX': 'CRX',
+    'RY': 'CRY',
+    'RZ': 'CRZ',
+  };
+
   /**
    * Converts the grid-based circuit state into a linear list of gates
    * suitable for the backend API.
+   *
+   * **Control-detection algorithm (per time-step):**
+   *
+   *  1. Scan wires and collect • (control) qubit indices.
+   *  2. Collect all non-control, non-SWAP gate placements as *targets*.
+   *  3. Collect SWAP placements separately (SWAP needs 2 wires).
+   *  4. Combine:
+   *     - 1 control + supported target → controlled gate (CY, CH, CRX, …)
+   *     - 2 controls + ⊕/X target → CCX (Toffoli)
+   *     - 1 control + 2 SWAPs → CSWAP (Fredkin)
+   *     - 2 SWAPs without control → plain SWAP
+   *     - Remaining gates without a control → plain single-qubit gates
    */
   const getGatesFromGrid = () => {
       const gates: QuantumGate[] = [];
-      for (let step = 0; step < numSteps; step++) {
-          let controlQubit = -1;
-          let targetQubit = -1;
-          const stepGates: { name: string; qubit: number, params?: number[] }[] = [];
 
-          // First pass: collect gates and identify control/target
+      for (let step = 0; step < numSteps; step++) {
+          // --- 1. Collect controls, targets, and SWAPs --------------------
+          const controlQubits: number[] = [];
+          const targets: { name: string; qubit: number; params?: number[] }[] = [];
+          const swapQubits: number[] = [];
+
           for (let qubit = 0; qubit < numQubits; qubit++) {
               const cellId = `q${qubit}-s${step}`;
               const gateName = circuit[cellId];
               const params = gateParams[cellId];
 
-              if (gateName) {
-                  if (gateName === '•') {
-                      controlQubit = qubit;
-                  } else if (gateName === '⊕') {
-                      targetQubit = qubit;
-                  } else if (['RX', 'RY', 'RZ'].includes(gateName)) {
-                      // Use stored params or default to pi/2
-                      stepGates.push({ name: gateName, qubit, params: params || [Math.PI / 2] });
-                  } else {
-                      stepGates.push({ name: gateName, qubit });
-                  }
+              if (!gateName) continue;
+
+              if (gateName === '•') {
+                  controlQubits.push(qubit);
+              } else if (gateName === 'SWAP') {
+                  swapQubits.push(qubit);
+              } else {
+                  targets.push({
+                      name: gateName,
+                      qubit,
+                      params: params || undefined,
+                  });
               }
           }
 
-          // Handle CNOT if both parts are present
-          if (controlQubit !== -1 && targetQubit !== -1) {
-              gates.push({
-                  name: 'CNOT',
-                  qubits: [controlQubit, targetQubit]
-              });
+          // --- 2. Combine controls + targets → controlled gates -----------
+
+          if (controlQubits.length > 0) {
+              // We have control dot(s) — look for something to control
+
+              // Check for CSWAP: 1 control + 2 SWAP chips
+              if (controlQubits.length === 1 && swapQubits.length === 2) {
+                  gates.push({
+                      name: 'CSWAP',
+                      qubits: [controlQubits[0], swapQubits[0], swapQubits[1]],
+                  });
+                  // Consume all — skip to remaining un-paired targets below
+              }
+              // Check for Toffoli: 2 controls + ⊕ or X target
+              else if (controlQubits.length >= 2) {
+                  const toffoliTarget = targets.find(t => t.name === '⊕' || t.name === 'X');
+                  if (toffoliTarget) {
+                      gates.push({
+                          name: 'CCX',
+                          qubits: [...controlQubits.slice(0, 2), toffoliTarget.qubit],
+                      });
+                      // Remove used target so it is not emitted again below
+                      const idx = targets.indexOf(toffoliTarget);
+                      if (idx !== -1) targets.splice(idx, 1);
+                  }
+                  // Remaining controls without a valid target are ignored
+              }
+              // 1 control + a supported target gate
+              else if (controlQubits.length === 1) {
+                  const ctrl = controlQubits[0];
+
+                  // Find the first compatible target
+                  const targetIdx = targets.findIndex(t => CONTROLLED_NAME[t.name] !== undefined);
+
+                  if (targetIdx !== -1) {
+                      const tgt = targets[targetIdx];
+                      const controlledName = CONTROLLED_NAME[tgt.name];
+                      const entry: QuantumGate = {
+                          name: controlledName,
+                          qubits: [ctrl, tgt.qubit],
+                      };
+                      if (tgt.params) entry.params = tgt.params;
+                      gates.push(entry);
+                      targets.splice(targetIdx, 1);
+                  }
+              }
+          } else {
+              // No controls — plain SWAP if 2 SWAP chips on different wires
+              if (swapQubits.length === 2) {
+                  gates.push({ name: 'SWAP', qubits: [swapQubits[0], swapQubits[1]] });
+              }
           }
 
-          // Add other single-qubit gates
-          stepGates.forEach(g => {
-             gates.push({
-                 name: g.name,
-                 qubits: [g.qubit],
-                 params: (g as any).params
-             });
-          });
+          // --- 3. Emit remaining un-paired single-qubit gates -------------
+          for (const g of targets) {
+              if (g.name === 'M') {
+                  gates.push({ name: 'M', qubits: [g.qubit] });
+              } else if (PARAMETERISED_GATES.has(g.name)) {
+                  gates.push({
+                      name: g.name,
+                      qubits: [g.qubit],
+                      params: g.params || [Math.PI / 2],
+                  });
+              } else {
+                  gates.push({ name: g.name, qubits: [g.qubit] });
+              }
+          }
       }
+
       return gates;
   };
 
@@ -252,7 +353,7 @@ export const CircuitBoard: React.FC = () => {
   };
 
   return (
-    <DndContext id="dnd-context" onDragEnd={handleDragEnd}>
+    <DndContext id="dnd-context" onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div className="flex h-screen bg-gray-950 text-white overflow-hidden text-sm"> {/* Global text-sm */}
         {/* Left Sidebar: Gate Palette */}
         <GatePalette />
@@ -302,6 +403,14 @@ export const CircuitBoard: React.FC = () => {
                             <input type="file" onChange={loadCircuit} accept=".json" className="hidden" />
                         </label>
                     </div>
+
+                    <button 
+                        onClick={() => setIsAlgorithmModalOpen(true)}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded font-semibold transition-colors text-xs"
+                    >
+                        <Zap size={16} />
+                        Algorithms
+                    </button>
 
                     <button 
                         onClick={runOptimization}
@@ -489,6 +598,21 @@ export const CircuitBoard: React.FC = () => {
             </div>
         </div>
       </div>
+      
+      <AlgorithmModal 
+        isOpen={isAlgorithmModalOpen} 
+        onClose={() => setIsAlgorithmModalOpen(false)}
+        circuit={getGatesFromGrid()}
+        numQubits={numQubits}
+      />
+      {/* Floating drag overlay — prevents the palette from shifting */}
+      <DragOverlay dropAnimation={null}>
+        {activeGate ? (
+          <div className="w-12 h-12 flex items-center justify-center rounded-md border-2 border-cyan-400 bg-gray-800 text-cyan-50 font-bold shadow-lg shadow-cyan-500/30 pointer-events-none">
+            {activeGate}
+          </div>
+        ) : null}
+      </DragOverlay>
     </DndContext>
   );
 };

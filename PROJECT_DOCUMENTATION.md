@@ -1,65 +1,104 @@
-# Quantum Circuit Debugger - Project Documentation
+# Quantum Circuit Debugger — Project Documentation
 
 ## Project Overview
-This project is a web-based **Quantum Circuit Debugger & Visualizer** built to provide an interactive way to design, simulating, optimize, and debug quantum circuits. It integrates a **Next.js frontend** with a **FastAPI backend** powered by **Qiskit**.
+
+A web-based **Quantum Circuit Debugger & Visualiser** that provides an interactive way to design, simulate, optimise, and debug quantum circuits. Built with a **Next.js frontend** and a **FastAPI backend** powered by **Qiskit**.
 
 ## Features Implemented
 
 ### 1. Frontend (Next.js & React)
+
 - **Interactive Circuit Builder**:
   - Drag-and-drop interface using `@dnd-kit`.
-  - Supports single-qubit gates (X, Y, Z, H, S, T) and multi-qubit gates (CNOT, SWAP).
-  - Undo/Redo functionality for circuit modifications.
-  - Dynamically resizable grid (default 3 qubits, 8 steps).
-  
+  - Organised gate palette with five sections: Basic, Rotation, Controlled, Multi-Qubit, and Utility.
+  - Supports 20+ gate types including all standard controlled operations.
+  - Double-click rotation / controlled-rotation gates to edit angles (radians or π multiples).
+  - Undo / Redo with full history support.
+  - Dynamically resizable grid (default 3 qubits, 10 steps).
+
 - **Circuit Management**:
-  - **Save/Load**: Save circuits to JSON files and reload them later.
-  - **Clear Circuit**: Reset the board.
+  - **Save / Load** — export circuits to JSON and reload them.
+  - **Clear Circuit** — reset the board.
 
-- **Simulation & Visualization**:
-  - **Run Button**: Executes the circuit on the backend simulator.
-  - **Results Display**: Shows measurement probabilities/counts using Recharts bar charts.
-  - **Logs Panel**: Displays system status and execution logs.
+- **Simulation & Visualisation**:
+  - **Run** — execute the circuit on the backend Aer simulator.
+  - **Results Display** — bar chart of measurement probabilities (Recharts).
+  - **Live Bloch Sphere** — per-qubit Bloch sphere updates automatically as you build.
+  - **Logs Panel** — system status and execution messages.
 
-- **Optimization**:
-  - **Optimize Button**: Sends the circuit to the backend for transpilation (optimization level 3).
-  - **Optimization Report**: Displays original vs. optimized depth, gate counts, and the optimized OpenQASM code.
+- **Optimisation**:
+  - **Optimise** — sends the circuit for transpilation (level 3).
+  - **Report** — original vs. optimised depth and gate counts, plus OpenQASM output.
 
-- **Export Capabilities**:
-  - **Python (Qiskit)**: Generates executable Python code for the circuit.
-  - **OpenQASM**: Generates standard OpenQASM 2.0 code.
-  - **LaTeX**: Generates LaTeX source code for circuit diagrams.
-  - **Image (PNG)**: Downloads a high-quality image of the circuit diagram.
+- **Advanced Algorithms**:
+  - **VQE / QAOA modal** — configure Hamiltonian, optimiser, and iterations.
+  - **Convergence plot** — real-time energy vs. iteration line chart.
+  - **Optimal parameters** — displayed after convergence.
+
+- **Export Capabilities** (5 frameworks):
+  - **Qiskit** (Python) — fully executable circuit code.
+  - **OpenQASM 2.0** — standard quantum assembly.
+  - **PennyLane** (Python) — differentiable quantum circuit.
+  - **Cirq** (Python) — Google's quantum framework.
+  - **Q#** (Microsoft) — .NET quantum programs.
+  - **LaTeX** — circuit diagram source code.
+  - **Image (PNG)** — high-quality circuit diagram download.
 
 ### 2. Backend (FastAPI & Python)
+
 - **API Endpoints**:
-  - `POST /execute`: Runs a quantum circuit simulation (1024 shots) and returns counts/probabilities.
-  - `POST /optimize`: Optimizes the circuit using Qiskit's transpiler and returns metrics.
-  - `POST /export/latex`: Generates LaTeX source code for circuit visualization.
-  - `POST /export/image`: Generates a base64-encoded PNG image of the circuit using Matplotlib.
+
+  | Endpoint | Description |
+  |----------|-------------|
+  | `POST /execute` | Simulate circuit → measurement counts + statevector |
+  | `POST /optimize` | Transpile and report depth/gate-count improvements |
+  | `POST /export/latex` | Generate LaTeX source |
+  | `POST /export/image` | Generate Base64 PNG |
+  | `POST /export/bloch` | Per-qubit Bloch sphere images |
+  | `POST /run-algorithm` | VQE / QAOA variational algorithm |
+  | `POST /qft` | Build & simulate Quantum Fourier Transform |
+
+- **Supported Gate Library**:
+
+  | Category | Gates |
+  |----------|-------|
+  | Single-qubit (fixed) | H, X, Y, Z, S, T |
+  | Single-qubit (parameterised) | RX(θ), RY(θ), RZ(θ) |
+  | Two-qubit (fixed) | CNOT/CX, CY, CZ, CH, SWAP |
+  | Two-qubit (parameterised) | CRX(θ), CRY(θ), CRZ(θ), CP(θ) |
+  | Three-qubit | CCX (Toffoli), CSWAP (Fredkin) |
+  | Measurement | M |
+
+- **QFT Builder**:
+  - Constructs a Quantum Fourier Transform circuit using H + CP + SWAP.
+  - Supports forward QFT and inverse QFT (QFT†).
+  - Accepts optional initial-state bitstring.
 
 - **Core Logic**:
-  - **Simulation**: Uses `qiskit-aer` for high-performance simulation.
-  - **Transpilation**: Uses `qiskit.transpile` for transpilation.
-  - **Visualization**: Uses `circuit.draw()` with 'mpl' and 'latex_source' backends.
+  - **Simulation** — `qiskit-aer` for high-performance statevector / qasm simulation.
+  - **Transpilation** — `qiskit.transpile` at optimisation level 3.
+  - **Visualisation** — `circuit.draw()` with `mpl` and `latex_source` backends; partial-trace Bloch vectors.
 
 ### 3. DevOps & Deployment
-- **Dockerization**:
+
+- **Docker**:
   - `Dockerfile` for Backend (Python 3.9 slim).
   - `Dockerfile` for Frontend (Node 18 Alpine).
 - **Orchestration**:
-  - `docker-compose.yml` to run both services with a single command.
+  - `docker-compose.yml` — single-command startup for both services.
 
 ## Technology Stack
-- **Frontend**: Next.js, TypeScript, TailwindCSS, Lucide React, Recharts, Axios.
-- **Backend**: Python, FastAPI, Pydantic, Uvicorn.
-- **Quantum SDK**: Qiskit, Qiskit Aer.
-- **Tools**: Docker, Docker Compose.
+
+| Component | Technologies |
+|-----------|-------------|
+| Frontend | Next.js, TypeScript, TailwindCSS, Lucide React, Recharts, Axios, @dnd-kit |
+| Backend | Python, FastAPI, Pydantic, Uvicorn |
+| Quantum SDK | Qiskit, Qiskit Aer |
+| Tools | Docker, Docker Compose |
 
 ## How to Run
 
 ### Option 1: Docker (Recommended)
-Run the entire application stack:
 ```bash
 docker-compose up --build
 ```
@@ -68,16 +107,16 @@ docker-compose up --build
 
 ### Option 2: Manual Setup
 
-**Backend**:
+**Backend:**
 ```bash
 cd backend
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 uvicorn main:app --reload
 ```
 
-**Frontend**:
+**Frontend:**
 ```bash
 cd frontend
 npm install
@@ -85,10 +124,11 @@ npm run dev
 ```
 
 ## API Reference
-The backend exposes interactive documentation at http://localhost:8000/docs.
+
+Interactive Swagger documentation is available at http://localhost:8000/docs when the backend is running.
 
 ## Future Roadmap
 - Integration with real quantum hardware (IBM Quantum).
 - User authentication and cloud storage for circuits.
 - Advanced noise models and error mitigation.
-- Step-by-step statevector debugging (visualization at each gate).
+- Step-by-step statevector debugging (visualisation at each gate).

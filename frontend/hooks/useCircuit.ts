@@ -105,8 +105,8 @@ export const useCircuit = () => {
             newNumSteps = stepIdx + 2; // Ensure always one empty after
         }
 
-        // Initialize default parameters for rotational gates
-        if (['RX', 'RY', 'RZ'].includes(gateName)) {
+        // Initialize default parameters for rotational / controlled-rotation gates
+        if (['RX', 'RY', 'RZ', 'CRX', 'CRY', 'CRZ'].includes(gateName)) {
             newParams[cellId] = [Math.PI / 2];
         } else {
             delete newParams[cellId];
