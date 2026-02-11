@@ -21,6 +21,11 @@ const GATE_SECTIONS: { label: string; gates: string[] }[] = [
   { label: 'Utility',     gates: ['M'] },
 ];
 
+interface GatePaletteProps {
+  /** Whether the palette is open on mobile (controlled by parent) */
+  mobileOpen?: boolean;
+}
+
 /**
  * Side panel containing draggable quantum gate chips.
  *
@@ -28,14 +33,31 @@ const GATE_SECTIONS: { label: string; gates: string[] }[] = [
  * Utility).  To create controlled operations, drag • onto control wire(s)
  * and the target gate onto the target wire at the same step.
  */
-export const GatePalette: React.FC = () => {
+export const GatePalette: React.FC<GatePaletteProps> = ({ mobileOpen }) => {
   return (
-    <div className="w-56 bg-gray-900 border-r border-gray-800 p-3 flex flex-col gap-3 overflow-y-auto">
-      <h2 className="text-sm font-bold text-cyan-400 mb-1 uppercase tracking-wider">Gate Palette</h2>
+    <div
+      className={`w-56 border-r p-3 flex flex-col gap-3 overflow-y-auto transition-transform duration-200
+        max-md:fixed max-md:top-0 max-md:left-0 max-md:h-full max-md:z-40 max-md:shadow-2xl
+        ${mobileOpen ? 'max-md:translate-x-0' : 'max-md:-translate-x-full'}
+        md:relative md:translate-x-0`}
+      style={{
+        background: 'var(--bg-secondary)',
+        borderColor: 'var(--border-primary)',
+      }}
+    >
+      <h2
+        className="text-sm font-bold mb-1 uppercase tracking-wider"
+        style={{ color: 'var(--accent-primary)' }}
+      >
+        Gate Palette
+      </h2>
 
       {GATE_SECTIONS.map((section) => (
         <div key={section.label}>
-          <h3 className="text-[10px] font-semibold text-gray-500 uppercase tracking-widest mb-1.5">
+          <h3
+            className="text-[10px] font-semibold uppercase tracking-widest mb-1.5"
+            style={{ color: 'var(--text-muted)' }}
+          >
             {section.label}
           </h3>
           <div className="grid grid-cols-3 gap-1.5">
@@ -52,12 +74,18 @@ export const GatePalette: React.FC = () => {
       ))}
 
       {/* Usage hint */}
-      <div className="mt-2 p-2 bg-gray-800/50 rounded text-[9px] text-gray-400 leading-relaxed">
-        <span className="text-cyan-400 font-bold">Controlled gates:</span> Place{' '}
-        <span className="text-yellow-400 font-mono">•</span> on control wire(s) and the
+      <div
+        className="mt-2 p-2 rounded text-[9px] leading-relaxed"
+        style={{
+          background: 'var(--bg-hover)',
+          color: 'var(--text-muted)',
+        }}
+      >
+        <span style={{ color: 'var(--accent-primary)' }} className="font-bold">Controlled gates:</span> Place{' '}
+        <span className="font-mono" style={{ color: 'var(--accent-yellow)' }}>•</span> on control wire(s) and the
         target gate (H, Y, Z, RX…) on the target wire at the same step.
         <br />
-        <span className="text-gray-500">• + ⊕ → CNOT&ensp;|&ensp;•• + ⊕ → Toffoli</span>
+        <span style={{ color: 'var(--text-muted)' }}>• + ⊕ → CNOT&ensp;|&ensp;•• + ⊕ → Toffoli</span>
       </div>
     </div>
   );

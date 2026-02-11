@@ -1,26 +1,116 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ═══════════════════════════════════════════════════════════════
+   Design Tokens — Dark Theme (default)
+   ═══════════════════════════════════════════════════════════════ */
+[data-theme="dark"] {
+  --bg-primary:    #030712;
+  --bg-secondary:  #111827;
+  --bg-tertiary:   #1f2937;
+  --bg-card:       #111827;
+  --bg-input:      #111827;
+  --bg-hover:      #1f2937;
+  --bg-overlay:    rgba(0, 0, 0, 0.5);
+  --bg-code:       rgba(0, 0, 0, 0.5);
+
+  --text-primary:   #f9fafb;
+  --text-secondary: #d1d5db;
+  --text-muted:     #6b7280;
+  --text-inverse:   #111827;
+
+  --border-primary:   #1f2937;
+  --border-secondary: #374151;
+  --border-subtle:    rgba(55, 65, 81, 0.5);
+
+  --accent-primary:   #06b6d4;   /* cyan */
+  --accent-secondary: #a855f7;   /* purple */
+  --accent-green:     #22c55e;
+  --accent-blue:      #3b82f6;
+  --accent-red:       #ef4444;
+  --accent-yellow:    #f59e0b;
+  --accent-orange:    #f97316;
+
+  --wire-color: #374151;
+  --snap-dot:   rgba(55, 65, 81, 0.5);
+
+  /* Chart / Tooltip */
+  --chart-grid:    #374151;
+  --chart-axis:    #9ca3af;
+  --tooltip-bg:    #1f2937;
+  --tooltip-border:#374151;
+  --tooltip-text:  #f3f4f6;
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   Design Tokens — Light Theme
+   ═══════════════════════════════════════════════════════════════ */
+[data-theme="light"] {
+  --bg-primary:    #f8fafc;
+  --bg-secondary:  #ffffff;
+  --bg-tertiary:   #f1f5f9;
+  --bg-card:       #ffffff;
+  --bg-input:      #ffffff;
+  --bg-hover:      #e2e8f0;
+  --bg-overlay:    rgba(0, 0, 0, 0.3);
+  --bg-code:       #f1f5f9;
+
+  --text-primary:   #0f172a;
+  --text-secondary: #334155;
+  --text-muted:     #64748b;
+  --text-inverse:   #f9fafb;
+
+  --border-primary:   #e2e8f0;
+  --border-secondary: #cbd5e1;
+  --border-subtle:    rgba(203, 213, 225, 0.5);
+
+  --accent-primary:   #0891b2;   /* darker cyan */
+  --accent-secondary: #9333ea;   /* darker purple */
+  --accent-green:     #16a34a;
+  --accent-blue:      #2563eb;
+  --accent-red:       #dc2626;
+  --accent-yellow:    #d97706;
+  --accent-orange:    #ea580c;
+
+  --wire-color: #cbd5e1;
+  --snap-dot:   rgba(203, 213, 225, 0.5);
+
+  --chart-grid:    #e2e8f0;
+  --chart-axis:    #64748b;
+  --tooltip-bg:    #ffffff;
+  --tooltip-border:#e2e8f0;
+  --tooltip-text:  #0f172a;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Base Styles
+   ═══════════════════════════════════════════════════════════════ */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-background: var(--bg-primary);
+  --color-foreground: var(--text-primary);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+body {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: Arial, Helvetica, sans-serif;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Custom scrollbar for themed UI */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: var(--border-secondary);
+  border-radius: 3px;
+}
+
+/* Range input accent */
+input[type="range"] {
+  accent-color: var(--accent-primary);
 }

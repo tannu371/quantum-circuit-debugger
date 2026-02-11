@@ -36,19 +36,14 @@ function layoutNodes(n: number, width: number, height: number, adjacencyMatrix: 
     const cy = height / 2;
     const radius = Math.min(cx, cy) - 36;
 
-    // Check if it's a grid
     const side = Math.ceil(Math.sqrt(n));
     const isGrid = n >= 4 && side * side >= n && (() => {
-        // Heuristic: check if edge pattern matches grid
         for (let i = 0; i < n; i++) {
             const r = Math.floor(i / side);
             const c = i % side;
-            // right neighbor
             if (c + 1 < side && i + 1 < n && adjacencyMatrix[i][i + 1] === 0 && adjacencyMatrix[i + 1]?.[i] === 0) {
-                // not a grid row connection
             }
         }
-        // Just use circular for simplicity; grid detection is hard
         return false;
     })();
 
@@ -88,7 +83,6 @@ export default function GraphVisualization({
         [n, width, height, adjacencyMatrix],
     );
 
-    // Build edge list (undirected — only upper triangle)
     const edges = useMemo(() => {
         const e: { i: number; j: number; w: number; cut: boolean }[] = [];
         for (let i = 0; i < n; i++) {
@@ -105,7 +99,6 @@ export default function GraphVisualization({
         return e;
     }, [adjacencyMatrix, n, solutionBitstring]);
 
-    // Node color
     const nodeColor = (idx: number) => {
         if (solutionBitstring) {
             const bit = solutionBitstring[idx] ?? '0';
@@ -113,7 +106,6 @@ export default function GraphVisualization({
         }
         if (probabilities) {
             const p = probabilities[idx] ?? 0;
-            // Interpolate from dark gray to bright cyan
             const r = Math.round(30 + (6 - 30) * p);
             const g = Math.round(30 + (182 - 30) * p);
             const b = Math.round(46 + (212 - 46) * p);
@@ -123,13 +115,14 @@ export default function GraphVisualization({
     };
 
     const nodeRadius = Math.max(14, Math.min(22, 160 / n));
-
-    // Count cut edges
     const cutCount = edges.filter(e => e.cut).length;
 
     return (
-        <div className="bg-gray-950/50 rounded-lg border border-gray-800 p-3">
-            {title && <p className="text-xs text-gray-400 mb-2 font-medium">{title}</p>}
+        <div
+          className="rounded-lg p-3"
+          style={{ background: 'var(--bg-code)', border: '1px solid var(--border-primary)' }}
+        >
+            {title && <p className="text-xs mb-2 font-medium" style={{ color: 'var(--text-muted)' }}>{title}</p>}
             <svg width={width} height={height} className="mx-auto" viewBox={`0 0 ${width} ${height}`}>
                 <defs>
                     <filter id="glow">
@@ -144,7 +137,7 @@ export default function GraphVisualization({
                         key={`e-${i}-${j}`}
                         x1={positions[i].x} y1={positions[i].y}
                         x2={positions[j].x} y2={positions[j].y}
-                        stroke={cut ? '#F59E0B' : '#4B5563'}
+                        stroke={cut ? 'var(--accent-yellow)' : 'var(--border-secondary)'}
                         strokeWidth={cut ? 2.5 : 1.5}
                         strokeDasharray={cut ? '6 3' : undefined}
                         opacity={cut ? 1 : 0.6}
@@ -159,7 +152,7 @@ export default function GraphVisualization({
                             fill={nodeColor(i)}
                             stroke={solutionBitstring
                                 ? (solutionBitstring[i] === '1' ? '#93C5FD' : '#FCA5A5')
-                                : '#6B7280'}
+                                : 'var(--border-secondary)'}
                             strokeWidth={2}
                         />
                         <text
@@ -175,7 +168,7 @@ export default function GraphVisualization({
             </svg>
 
             {/* Legend */}
-            <div className="flex items-center justify-center gap-4 mt-2 text-[10px] text-gray-400">
+            <div className="flex items-center justify-center gap-4 mt-2 text-[10px]" style={{ color: 'var(--text-muted)' }}>
                 {solutionBitstring && (<>
                     <span className="flex items-center gap-1">
                         <span className="w-2.5 h-2.5 rounded-full" style={{ background: CLUSTER_COLORS['0'] }}/>
@@ -187,7 +180,7 @@ export default function GraphVisualization({
                     </span>
                     {cutCount > 0 && (
                         <span className="flex items-center gap-1">
-                            <span className="w-4 border-t-2 border-dashed border-yellow-400"/>
+                            <span className="w-4 border-t-2 border-dashed" style={{ borderColor: 'var(--accent-yellow)' }}/>
                             Cut edges ({cutCount})
                         </span>
                     )}

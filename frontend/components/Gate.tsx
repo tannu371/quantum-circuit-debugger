@@ -62,10 +62,15 @@ export const Gate: React.FC<GateProps> = ({ id, name, className }) => {
       {...attributes}
       title={description}
       className={clsx(
-        'w-12 h-12 flex items-center justify-center rounded-md border-2 border-cyan-500 bg-gray-800 text-cyan-50 font-bold cursor-grab hover:bg-gray-700 z-50',
+        'w-12 h-12 flex items-center justify-center rounded-md border-2 font-bold cursor-grab z-50 transition-colors',
         isDragging && 'opacity-0',
         className
       )}
+      style={{
+        background: 'var(--bg-tertiary)',
+        borderColor: 'var(--accent-primary)',
+        color: 'var(--text-primary)',
+      }}
     >
       {name}
     </div>

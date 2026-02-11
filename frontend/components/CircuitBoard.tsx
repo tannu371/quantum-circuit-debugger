@@ -5,7 +5,8 @@ import { CircuitCell } from './CircuitCell';
 import { GatePalette } from './GatePalette';
 import AlgorithmModal from './AlgorithmModal';
 import { useCircuit } from '../hooks/useCircuit';
-import { RotateCcw, RotateCw, Trash2, Play, Loader2, Zap, Download, Code, FileText, Image as ImageIcon, FileCode, Save, Upload } from 'lucide-react';
+import { useTheme } from './ThemeProvider';
+import { RotateCcw, RotateCw, Trash2, Play, Loader2, Zap, Download, Code, FileText, Image as ImageIcon, FileCode, Save, Upload, Sun, Moon, Menu, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { ExecutionResults } from './ExecutionResults';
 import { executeCircuit, optimizeCircuit, exportToLatex, exportToImage, exportToBloch, QuantumGate, ExecutionResult, OptimizationResult } from '../utils/api';
 import { generateQiskitCode, generateOpenQASM, generatePennyLaneCode, generateCirqCode, generateQSharpCode } from '../utils/export';
@@ -17,6 +18,7 @@ import { generateQiskitCode, generateOpenQASM, generatePennyLaneCode, generateCi
  */
 export const CircuitBoard: React.FC = () => {
   const { circuit, gateParams, numQubits, numSteps, addGate, removeGate, updateGateParams, undo, redo, setCircuit, canUndo, canRedo } = useCircuit();
+  const { theme, toggleTheme } = useTheme();
   
   // UI state for simulation and optimization
   const [isRunning, setIsRunning] = useState(false);
@@ -38,6 +40,10 @@ export const CircuitBoard: React.FC = () => {
   const [blochImages, setBlochImages] = useState<string[]>([]);
   const [isBlochLoading, setIsBlochLoading] = useState(false);
 
+  // Mobile UI State
+  const [mobileGatePaletteOpen, setMobileGatePaletteOpen] = useState(false);
+  const [mobileBlochOpen, setMobileBlochOpen] = useState(false);
+
   // Live Bloch Sphere Effect
   useEffect(() => {
     const fetchBloch = async () => {
@@ -48,12 +54,10 @@ export const CircuitBoard: React.FC = () => {
             if ((data as any).error) {
                 console.error("Bloch error:", (data as any).error);
             } else {
-                // Determine if data is the old single-image format or new list format
                 if ((data as any).bloch_images) {
                     setBlochImages((data as any).bloch_images);
                 } else if ((data as any).image_base64) {
-                    // Fallback if backend returned old format (shouldn't happen if updated correctly)
-                     setBlochImages([(data as any).image_base64]);
+                    setBlochImages([(data as any).image_base64]);
                 }
             }
         } catch (err) {
@@ -65,24 +69,15 @@ export const CircuitBoard: React.FC = () => {
 
     const timer = setTimeout(() => {
         fetchBloch();
-    }, 500); // 500ms debounce
+    }, 500);
 
     return () => clearTimeout(timer);
   }, [circuit, gateParams, numQubits, numSteps]);
 
-
-  /**
-   * Called when a drag begins — stores the gate name so DragOverlay can
-   * render a floating clone while the original stays in place.
-   */
   const handleDragStart = (event: DragStartEvent) => {
     setActiveGate((event.active.data.current?.name as string) || null);
   };
 
-  /**
-   * Handles the end of a drag event.
-   * If a gate is dropped onto a valid cell, it updates the circuit state.
-   */
   const handleDragEnd = (event: DragEndEvent) => {
     setActiveGate(null);
     const { active, over } = event;
@@ -93,16 +88,10 @@ export const CircuitBoard: React.FC = () => {
     }
   };
 
-  /** Gates that carry rotation / phase parameters. */
   const PARAMETERISED_GATES = new Set(['RX', 'RY', 'RZ']);
 
-  /**
-   * Map from a *target* gate name to the controlled version sent to the
-   * backend.  When a • control is paired with one of these gates at the
-   * same step, the controlled name is used instead.
-   */
   const CONTROLLED_NAME: Record<string, string> = {
-    '⊕': 'CNOT', // • + ⊕ → CNOT
+    '⊕': 'CNOT',
     'X': 'CX',
     'Y': 'CY',
     'Z': 'CZ',
@@ -112,27 +101,10 @@ export const CircuitBoard: React.FC = () => {
     'RZ': 'CRZ',
   };
 
-  /**
-   * Converts the grid-based circuit state into a linear list of gates
-   * suitable for the backend API.
-   *
-   * **Control-detection algorithm (per time-step):**
-   *
-   *  1. Scan wires and collect • (control) qubit indices.
-   *  2. Collect all non-control, non-SWAP gate placements as *targets*.
-   *  3. Collect SWAP placements separately (SWAP needs 2 wires).
-   *  4. Combine:
-   *     - 1 control + supported target → controlled gate (CY, CH, CRX, …)
-   *     - 2 controls + ⊕/X target → CCX (Toffoli)
-   *     - 1 control + 2 SWAPs → CSWAP (Fredkin)
-   *     - 2 SWAPs without control → plain SWAP
-   *     - Remaining gates without a control → plain single-qubit gates
-   */
   const getGatesFromGrid = () => {
       const gates: QuantumGate[] = [];
 
       for (let step = 0; step < numSteps; step++) {
-          // --- 1. Collect controls, targets, and SWAPs --------------------
           const controlQubits: number[] = [];
           const targets: { name: string; qubit: number; params?: number[] }[] = [];
           const swapQubits: number[] = [];
@@ -157,20 +129,13 @@ export const CircuitBoard: React.FC = () => {
               }
           }
 
-          // --- 2. Combine controls + targets → controlled gates -----------
-
           if (controlQubits.length > 0) {
-              // We have control dot(s) — look for something to control
-
-              // Check for CSWAP: 1 control + 2 SWAP chips
               if (controlQubits.length === 1 && swapQubits.length === 2) {
                   gates.push({
                       name: 'CSWAP',
                       qubits: [controlQubits[0], swapQubits[0], swapQubits[1]],
                   });
-                  // Consume all — skip to remaining un-paired targets below
               }
-              // Check for Toffoli: 2 controls + ⊕ or X target
               else if (controlQubits.length >= 2) {
                   const toffoliTarget = targets.find(t => t.name === '⊕' || t.name === 'X');
                   if (toffoliTarget) {
@@ -178,17 +143,12 @@ export const CircuitBoard: React.FC = () => {
                           name: 'CCX',
                           qubits: [...controlQubits.slice(0, 2), toffoliTarget.qubit],
                       });
-                      // Remove used target so it is not emitted again below
                       const idx = targets.indexOf(toffoliTarget);
                       if (idx !== -1) targets.splice(idx, 1);
                   }
-                  // Remaining controls without a valid target are ignored
               }
-              // 1 control + a supported target gate
               else if (controlQubits.length === 1) {
                   const ctrl = controlQubits[0];
-
-                  // Find the first compatible target
                   const targetIdx = targets.findIndex(t => CONTROLLED_NAME[t.name] !== undefined);
 
                   if (targetIdx !== -1) {
@@ -204,13 +164,11 @@ export const CircuitBoard: React.FC = () => {
                   }
               }
           } else {
-              // No controls — plain SWAP if 2 SWAP chips on different wires
               if (swapQubits.length === 2) {
                   gates.push({ name: 'SWAP', qubits: [swapQubits[0], swapQubits[1]] });
               }
           }
 
-          // --- 3. Emit remaining un-paired single-qubit gates -------------
           for (const g of targets) {
               if (g.name === 'M') {
                   gates.push({ name: 'M', qubits: [g.qubit] });
@@ -229,10 +187,6 @@ export const CircuitBoard: React.FC = () => {
       return gates;
   };
 
-  /**
-   * Sends the current circuit to the backend for execution.
-   * Updates the result state with counts and statevector.
-   */
   const runSimulation = async () => {
     setIsRunning(true);
     setError(null);
@@ -252,10 +206,6 @@ export const CircuitBoard: React.FC = () => {
     }
   };
 
-  /**
-   * Sends the current circuit to the backend for optimization.
-   * Updates the optimization result state.
-   */
   const runOptimization = async () => {
       try {
           const gates = getGatesFromGrid();
@@ -271,9 +221,6 @@ export const CircuitBoard: React.FC = () => {
       }
   };
 
-  /**
-   * Handles exporting the circuit to various code formats (QASM, LaTeX, Qiskit, PennyLane, Cirq, Q#).
-   */
   const handleExport = async (type: 'qiskit' | 'qasm' | 'latex' | 'pennylane' | 'cirq' | 'qsharp') => {
       if (type === 'latex') {
           try {
@@ -291,9 +238,6 @@ export const CircuitBoard: React.FC = () => {
       }
   };
 
-  /**
-   * Fetches the circuit image from the backend and triggers a download.
-   */
   const handleDownloadImage = async () => {
       try {
           const gates = getGatesFromGrid();
@@ -310,9 +254,6 @@ export const CircuitBoard: React.FC = () => {
       }
   };
 
-  /**
-   * Saves the current circuit layout to a JSON file.
-   */
   const saveCircuit = () => {
       const data = JSON.stringify({circuit, gateParams}, null, 2);
       const blob = new Blob([data], { type: 'application/json' });
@@ -326,9 +267,6 @@ export const CircuitBoard: React.FC = () => {
       URL.revokeObjectURL(url);
   };
 
-  /**
-   * Loads a circuit layout from a user-uploaded JSON file.
-   */
   const loadCircuit = (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
       if (!file) return;
@@ -338,11 +276,10 @@ export const CircuitBoard: React.FC = () => {
           try {
               const content = e.target?.result as string;
               const loadedData = JSON.parse(content);
-              // Handle legacy format (just circuit) vs new format (circuit + params)
               if (loadedData.circuit) {
                   setCircuit(loadedData.circuit, loadedData.gateParams || {});
               } else {
-                  setCircuit(loadedData); // Legacy
+                  setCircuit(loadedData);
               }
               setError(null);
           } catch (err) {
@@ -352,78 +289,120 @@ export const CircuitBoard: React.FC = () => {
       reader.readAsText(file);
   };
 
+  // Shared button styles
+  const iconBtnStyle: React.CSSProperties = { background: 'var(--bg-tertiary)', color: 'var(--text-secondary)' };
+  const iconBtnHoverCls = "transition-colors hover:opacity-80";
+
   return (
     <DndContext id="dnd-context" onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-      <div className="flex h-screen bg-gray-950 text-white overflow-hidden text-sm"> {/* Global text-sm */}
+      <div
+        className="flex h-screen overflow-hidden text-sm"
+        style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+      >
+        {/* Mobile overlay when gate palette is open */}
+        {mobileGatePaletteOpen && (
+          <div
+            className="fixed inset-0 z-30 md:hidden"
+            style={{ background: 'var(--bg-overlay)' }}
+            onClick={() => setMobileGatePaletteOpen(false)}
+          />
+        )}
+
         {/* Left Sidebar: Gate Palette */}
-        <GatePalette />
+        <GatePalette mobileOpen={mobileGatePaletteOpen} />
         
         {/* Main Content Area */}
         <div className="flex-1 flex flex-col h-full overflow-hidden">
             {/* Header */}
-            <header className="flex justify-between items-center p-3 border-b border-gray-800 bg-gray-950 z-20">
-                <h1 className="text-xl font-bold bg-gradient-to-r from-cyan-400 to-purple-500 bg-clip-text text-transparent">
-                    Quantum Circuit Debugger
-                </h1>
-                <div className="flex gap-3">
+            <header
+              className="flex flex-wrap justify-between items-center p-3 z-20 gap-2"
+              style={{ borderBottom: '1px solid var(--border-primary)', background: 'var(--bg-primary)' }}
+            >
+                <div className="flex items-center gap-2">
+                    {/* Mobile hamburger for gate palette */}
+                    <button
+                      onClick={() => setMobileGatePaletteOpen(!mobileGatePaletteOpen)}
+                      className="p-1.5 rounded md:hidden"
+                      style={iconBtnStyle}
+                    >
+                      {mobileGatePaletteOpen ? <X size={16} /> : <Menu size={16} />}
+                    </button>
+                    <h1 className="text-lg md:text-xl font-bold bg-gradient-to-r from-cyan-400 to-purple-500 bg-clip-text text-transparent">
+                        Quantum Circuit Debugger
+                    </h1>
+                </div>
+                <div className="flex flex-wrap gap-2 md:gap-3 items-center">
                     <div className="flex gap-1">
-                        <button onClick={undo} disabled={!canUndo} className="p-1.5 rounded bg-gray-800 hover:bg-gray-700 disabled:opacity-50" title="Undo"><RotateCcw size={16} /></button>
-                        <button onClick={redo} disabled={!canRedo} className="p-1.5 rounded bg-gray-800 hover:bg-gray-700 disabled:opacity-50" title="Redo"><RotateCw size={16} /></button>
+                        <button onClick={undo} disabled={!canUndo} className={`p-1.5 rounded disabled:opacity-50 ${iconBtnHoverCls}`} style={iconBtnStyle} title="Undo"><RotateCcw size={16} /></button>
+                        <button onClick={redo} disabled={!canRedo} className={`p-1.5 rounded disabled:opacity-50 ${iconBtnHoverCls}`} style={iconBtnStyle} title="Redo"><RotateCw size={16} /></button>
                     </div>
                     
-                    <div className="flex bg-gray-800 rounded p-1 gap-1 items-center">
-                        <button onClick={() => handleExport('qasm')} className="p-1.5 hover:bg-gray-700 rounded transition-colors" title="Export OpenQASM">
+                    <div className="flex rounded p-1 gap-1 items-center" style={{ background: 'var(--bg-tertiary)' }}>
+                        <button onClick={() => handleExport('qasm')} className={`p-1.5 rounded ${iconBtnHoverCls}`} title="Export OpenQASM">
                             <FileCode size={16} />
                         </button>
-                        <button onClick={() => handleExport('latex')} className="p-1.5 hover:bg-gray-700 rounded transition-colors" title="Export LaTeX">
+                        <button onClick={() => handleExport('latex')} className={`p-1.5 rounded ${iconBtnHoverCls}`} title="Export LaTeX">
                             <FileText size={16} />
                         </button>
-                        <button onClick={() => handleExport('qiskit')} className="p-1.5 hover:bg-gray-700 rounded transition-colors" title="Export Qiskit">
+                        <button onClick={() => handleExport('qiskit')} className={`p-1.5 rounded ${iconBtnHoverCls}`} title="Export Qiskit">
                             <Code size={16} />
                         </button>
-                        <button onClick={() => handleExport('pennylane')} className="p-1.5 hover:bg-gray-700 rounded transition-colors" title="Export PennyLane">
+                        <button onClick={() => handleExport('pennylane')} className={`p-1.5 rounded ${iconBtnHoverCls}`} title="Export PennyLane">
                             <span className="font-bold text-[10px]">PL</span>
                         </button>
-                        <button onClick={() => handleExport('cirq')} className="p-1.5 hover:bg-gray-700 rounded transition-colors" title="Export Cirq">
+                        <button onClick={() => handleExport('cirq')} className={`p-1.5 rounded ${iconBtnHoverCls}`} title="Export Cirq">
                             <span className="font-bold text-[10px]">Cq</span>
                         </button>
-                        <button onClick={() => handleExport('qsharp')} className="p-1.5 hover:bg-gray-700 rounded transition-colors" title="Export Q#">
+                        <button onClick={() => handleExport('qsharp')} className={`p-1.5 rounded ${iconBtnHoverCls}`} title="Export Q#">
                             <span className="font-bold text-[10px]">Q#</span>
                         </button>
                         
-                        <div className="w-px bg-gray-700 mx-1 self-stretch" />
-                        <button onClick={handleDownloadImage} className="p-1.5 hover:bg-gray-700 rounded transition-colors" title="Download Image">
+                        <div className="w-px mx-1 self-stretch" style={{ background: 'var(--border-secondary)' }} />
+                        <button onClick={handleDownloadImage} className={`p-1.5 rounded ${iconBtnHoverCls}`} title="Download Image">
                             <ImageIcon size={16} />
                         </button>
-                         <button onClick={saveCircuit} className="p-1.5 hover:bg-gray-700 rounded transition-colors" title="Save Circuit">
+                         <button onClick={saveCircuit} className={`p-1.5 rounded ${iconBtnHoverCls}`} title="Save Circuit">
                             <Save size={16} />
                         </button>
-                        <label className="p-1.5 hover:bg-gray-700 rounded transition-colors cursor-pointer" title="Load Circuit">
+                        <label className={`p-1.5 rounded cursor-pointer ${iconBtnHoverCls}`} title="Load Circuit">
                             <Upload size={16} />
                             <input type="file" onChange={loadCircuit} accept=".json" className="hidden" />
                         </label>
                     </div>
 
+                    {/* Theme toggle */}
+                    <button
+                      onClick={toggleTheme}
+                      className={`p-1.5 rounded ${iconBtnHoverCls}`}
+                      style={iconBtnStyle}
+                      title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+                    >
+                      {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+                    </button>
+
                     <button 
                         onClick={() => setIsAlgorithmModalOpen(true)}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded font-semibold transition-colors text-xs"
+                        className="flex items-center gap-2 px-3 py-1.5 rounded font-semibold transition-colors text-xs text-white"
+                        style={{ background: 'var(--accent-blue)' }}
                     >
                         <Zap size={16} />
-                        Algorithms
+                        <span className="hidden sm:inline">Algorithms</span>
                     </button>
 
                     <button 
                         onClick={runOptimization}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 rounded font-semibold transition-colors text-xs"
+                        className="flex items-center gap-2 px-3 py-1.5 rounded font-semibold transition-colors text-xs text-white"
+                        style={{ background: 'var(--accent-secondary)' }}
                     >
                         <Zap size={16} />
-                        Optimize
+                        <span className="hidden sm:inline">Optimize</span>
                     </button>
 
                     <button 
                         onClick={runSimulation}
                         disabled={isRunning}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-green-600 hover:bg-green-700 rounded font-semibold transition-colors disabled:opacity-70 disabled:cursor-wait text-xs"
+                        className="flex items-center gap-2 px-3 py-1.5 rounded font-semibold transition-colors disabled:opacity-70 disabled:cursor-wait text-xs text-white"
+                        style={{ background: 'var(--accent-green)' }}
                     >
                         {isRunning ? <Loader2 className="animate-spin" size={16} /> : <Play size={16} />}
                         {isRunning ? 'Running...' : 'Run'}
@@ -432,20 +411,23 @@ export const CircuitBoard: React.FC = () => {
             </header>
 
             {/* Split View: Circuit + Results vs Bloch Sidebar */}
-            <div className="flex-1 flex overflow-hidden">
+            <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
                 {/* Center Panel (Circuit + Results) */}
-                <div className="flex-1 flex flex-col p-4 overflow-auto scrollbar-thin scrollbar-thumb-gray-800">
+                <div className="flex-1 flex flex-col p-4 overflow-auto scrollbar-thin">
                      {/* Circuit Grid */}
-                    <div className="bg-gray-900 rounded-xl p-6 shadow-2xl border border-gray-800 overflow-x-auto min-h-[300px] mb-6">
+                    <div
+                      className="rounded-xl p-4 md:p-6 shadow-2xl overflow-x-auto min-h-[200px] md:min-h-[300px] mb-6"
+                      style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)' }}
+                    >
                         <div className="flex flex-col gap-4 min-w-max">
                             {Array.from({ length: numQubits }).map((_, qubitIdx) => (
                                 <div key={`qubit-${qubitIdx}`} className="flex items-center group">
-                                    <div className="w-12 text-right pr-4 font-mono text-gray-500 flex items-center justify-end text-sm">
+                                    <div className="w-12 text-right pr-4 font-mono flex items-center justify-end text-sm" style={{ color: 'var(--text-muted)' }}>
                                         <span>q[{qubitIdx}]</span>
                                     </div>
                                     <div className="flex relative items-center">
                                         {/* Wire Line */}
-                                        <div className="absolute left-0 right-0 h-0.5 bg-gray-700 -z-0" />
+                                        <div className="absolute left-0 right-0 h-0.5 -z-0" style={{ background: 'var(--wire-color)' }} />
                                         {Array.from({ length: numSteps }).map((_, stepIdx) => {
                                             const cellId = `q${qubitIdx}-s${stepIdx}`;
                                             return (
@@ -467,14 +449,17 @@ export const CircuitBoard: React.FC = () => {
                     </div>
 
                     {/* Results / Code Panel */}
-                    <div className="flex-1 grid grid-cols-2 gap-6">
+                    <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                         <ExecutionResults result={result} error={error} isRunning={isRunning} />
                         
                         <div className="flex flex-col gap-4">
                             {/* Code Export Panel */}
                             {showCode && (
-                                <div className="bg-gray-900 p-4 rounded-lg border border-blue-900/50 shadow-lg shadow-blue-900/10 h-full">
-                                    <h3 className="text-sm font-semibold text-blue-300 mb-3 flex items-center gap-2">
+                                <div
+                                  className="p-4 rounded-lg shadow-lg h-full"
+                                  style={{ background: 'var(--bg-secondary)', border: '1px solid color-mix(in srgb, var(--accent-blue) 30%, transparent)' }}
+                                >
+                                    <h3 className="text-sm font-semibold mb-3 flex items-center gap-2" style={{ color: 'var(--accent-blue)' }}>
                                         <Code size={16} /> Generated Code ({
                                             {
                                                 'qiskit': 'Qiskit',
@@ -486,7 +471,10 @@ export const CircuitBoard: React.FC = () => {
                                             }[showCode as string]
                                         })
                                     </h3>
-                                    <pre className="bg-black/50 p-3 rounded text-xs text-gray-300 overflow-auto h-[400px] font-mono leading-relaxed">
+                                    <pre
+                                      className="p-3 rounded text-xs overflow-auto h-[400px] font-mono leading-relaxed"
+                                      style={{ background: 'var(--bg-code)', color: 'var(--text-secondary)' }}
+                                    >
                                         {showCode === 'qiskit' 
                                             ? generateQiskitCode(getGatesFromGrid(), numQubits) 
                                             : showCode === 'qasm'
@@ -505,27 +493,30 @@ export const CircuitBoard: React.FC = () => {
 
                              {/* Optimization Results Panel */}
                              {optResult && !showCode && (
-                                <div className="bg-gray-900 p-4 rounded-lg border border-purple-900/50 shadow-lg shadow-purple-900/10">
-                                    <h3 className="text-sm font-semibold text-purple-300 mb-3 flex items-center gap-2">
+                                <div
+                                  className="p-4 rounded-lg shadow-lg"
+                                  style={{ background: 'var(--bg-secondary)', border: '1px solid color-mix(in srgb, var(--accent-secondary) 30%, transparent)' }}
+                                >
+                                    <h3 className="text-sm font-semibold mb-3 flex items-center gap-2" style={{ color: 'var(--accent-secondary)' }}>
                                         <Zap size={16} /> Optimization Report
                                     </h3>
                                     <div className="text-xs space-y-2">
-                                        <div className="p-2 bg-gray-800/50 rounded border border-gray-700">
-                                            <div className="text-green-400 font-medium">{optResult.improvement_msg}</div>
+                                        <div className="p-2 rounded" style={{ background: 'var(--bg-hover)', border: '1px solid var(--border-secondary)' }}>
+                                            <div className="font-medium" style={{ color: 'var(--accent-green)' }}>{optResult.improvement_msg}</div>
                                         </div>
                                         <div className="grid grid-cols-2 gap-3 mt-2">
-                                            <div className="p-2 bg-gray-800 rounded">
-                                                <div className="text-gray-500 text-[10px] uppercase">Original Depth</div>
-                                                <div className="text-lg font-mono text-white">{optResult.original_depth}</div>
+                                            <div className="p-2 rounded" style={{ background: 'var(--bg-tertiary)' }}>
+                                                <div className="text-[10px] uppercase" style={{ color: 'var(--text-muted)' }}>Original Depth</div>
+                                                <div className="text-lg font-mono" style={{ color: 'var(--text-primary)' }}>{optResult.original_depth}</div>
                                             </div>
-                                            <div className="p-2 bg-gray-800 rounded">
-                                                <div className="text-gray-500 text-[10px] uppercase">Optimized Depth</div>
-                                                <div className="text-lg font-mono text-cyan-400">{optResult.optimized_depth}</div>
+                                            <div className="p-2 rounded" style={{ background: 'var(--bg-tertiary)' }}>
+                                                <div className="text-[10px] uppercase" style={{ color: 'var(--text-muted)' }}>Optimized Depth</div>
+                                                <div className="text-lg font-mono" style={{ color: 'var(--accent-primary)' }}>{optResult.optimized_depth}</div>
                                             </div>
                                         </div>
                                         <div className="mt-2">
-                                            <div className="text-gray-500 text-[10px] mb-1">Optimized QASM:</div>
-                                            <pre className="bg-black/50 p-2 rounded text-[10px] text-gray-400 overflow-x-auto">
+                                            <div className="text-[10px] mb-1" style={{ color: 'var(--text-muted)' }}>Optimized QASM:</div>
+                                            <pre className="p-2 rounded text-[10px] overflow-x-auto" style={{ background: 'var(--bg-code)', color: 'var(--text-muted)' }}>
                                                 {optResult.optimized_qasm}
                                             </pre>
                                         </div>
@@ -534,13 +525,13 @@ export const CircuitBoard: React.FC = () => {
                             )}
 
                              {!optResult && !showCode && (
-                                <div className="bg-gray-900 p-4 rounded-lg border border-gray-800 mb-auto">
-                                    <h3 className="text-sm font-semibold text-gray-300 mb-3">Logs</h3>
-                                    <div className="font-mono text-[10px] text-green-400 flex flex-col gap-1 max-h-[200px] overflow-y-auto">
+                                <div className="p-4 rounded-lg mb-auto" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)' }}>
+                                    <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--text-secondary)' }}>Logs</h3>
+                                    <div className="font-mono text-[10px] flex flex-col gap-1 max-h-[200px] overflow-y-auto" style={{ color: 'var(--accent-green)' }}>
                                         <div>{'>'} System initialized. Ready.</div>
                                         {isRunning && <div>{'>'} Sending circuit to backend...</div>}
                                         {result && <div>{'>'} Execution completed successfully.</div>}
-                                        {error && <div className="text-red-400">{'>'} Error: {error}</div>}
+                                        {error && <div style={{ color: 'var(--accent-red)' }}>{'>'} Error: {error}</div>}
                                     </div>
                                 </div>
                             )}
@@ -548,35 +539,49 @@ export const CircuitBoard: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Right Sidebar: Live Bloch Sphere */}
-                <div className="w-[340px] bg-gray-900/50 border-l border-gray-800 flex flex-col h-full overflow-hidden">
-                     <div className="p-4 border-b border-gray-800/50 flex-none bg-gray-900/50 backdrop-blur-sm z-10">
+                {/* Right Sidebar / Mobile Collapsible: Live Bloch Sphere */}
+                <div
+                  className="w-full md:w-[340px] flex flex-col md:h-full overflow-hidden md:border-l"
+                  style={{ background: 'color-mix(in srgb, var(--bg-secondary) 50%, transparent)', borderColor: 'var(--border-primary)' }}
+                >
+                     {/* Bloch header — clickable on mobile to expand/collapse */}
+                     <div
+                       className="p-4 flex-none z-10 flex items-center justify-between cursor-pointer md:cursor-default"
+                       style={{ borderBottom: '1px solid var(--border-subtle)', background: 'color-mix(in srgb, var(--bg-secondary) 50%, transparent)' }}
+                       onClick={() => setMobileBlochOpen(!mobileBlochOpen)}
+                     >
                         <h2 className="text-lg font-bold bg-gradient-to-r from-red-400 to-orange-500 bg-clip-text text-transparent flex items-center gap-2">
                             <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse shadow-lg shadow-red-500/50"></span>
                             Live Bloch Sphere
                         </h2>
+                        <button className="md:hidden p-1" style={{ color: 'var(--text-muted)' }}>
+                          {mobileBlochOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                        </button>
                      </div>
                      
-                     <div className="flex-1 p-4 min-h-0 flex flex-col overflow-hidden">
-                        <div className="bg-black/40 rounded-lg border border-gray-700 flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 p-4 flex flex-col gap-4 items-center relative">
+                     <div className={`flex-1 p-4 min-h-0 flex-col overflow-hidden ${mobileBlochOpen ? 'flex' : 'hidden md:flex'}`}>
+                        <div
+                          className="rounded-lg flex-1 overflow-y-auto scrollbar-thin p-4 flex flex-col gap-4 items-center relative"
+                          style={{ background: 'var(--bg-code)', border: '1px solid var(--border-secondary)' }}
+                        >
                             {isBlochLoading && (
-                                <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-20 backdrop-blur-sm rounded-lg transition-all duration-300">
+                                <div className="absolute inset-0 flex items-center justify-center z-20 backdrop-blur-sm rounded-lg transition-all duration-300" style={{ background: 'var(--bg-overlay)' }}>
                                     <div className="flex flex-col items-center gap-2">
-                                        <Loader2 className="animate-spin text-red-500" size={32} />
-                                        <span className="text-xs text-red-400 font-mono">Updating...</span>
+                                        <Loader2 className="animate-spin" size={32} style={{ color: 'var(--accent-red)' }} />
+                                        <span className="text-xs font-mono" style={{ color: 'var(--accent-red)' }}>Updating...</span>
                                     </div>
                                 </div>
                             )}
                             {blochImages.length > 0 ? (
                                 blochImages.map((img, idx) => (
-                                    <div key={idx} className="flex flex-col items-center w-full bg-gray-900/30 rounded-lg p-2 border border-gray-800/50">
-                                        <div className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-1 w-full text-left pl-2">Qubit {idx}</div>
+                                    <div key={idx} className="flex flex-col items-center w-full rounded-lg p-2" style={{ background: 'color-mix(in srgb, var(--bg-secondary) 30%, transparent)', border: '1px solid var(--border-subtle)' }}>
+                                        <div className="text-[10px] uppercase tracking-widest font-bold mb-1 w-full text-left pl-2" style={{ color: 'var(--text-muted)' }}>Qubit {idx}</div>
                                         <img src={`data:image/png;base64,${img}`} alt={`Bloch Sphere Qubit ${idx}`} className="w-full h-auto rounded shadow-lg" />
                                     </div>
                                 ))
                             ) : (
-                                <div className="flex-1 flex flex-col items-center justify-center text-gray-500 gap-2">
-                                     <div className="w-16 h-16 rounded-full border-2 border-dashed border-gray-700 flex items-center justify-center opacity-50">
+                                <div className="flex-1 flex flex-col items-center justify-center gap-2" style={{ color: 'var(--text-muted)' }}>
+                                     <div className="w-16 h-16 rounded-full border-2 border-dashed flex items-center justify-center opacity-50" style={{ borderColor: 'var(--border-secondary)' }}>
                                         <Zap size={24} />
                                      </div>
                                      <div className="text-xs text-center">
@@ -587,7 +592,10 @@ export const CircuitBoard: React.FC = () => {
                         </div>
                      </div>
 
-                     <div className="p-4 pt-0 flex-none text-[10px] text-gray-500 border-t border-gray-800/30 bg-gray-900/30">
+                     <div
+                       className={`p-4 pt-0 flex-none text-[10px] ${mobileBlochOpen ? 'block' : 'hidden md:block'}`}
+                       style={{ color: 'var(--text-muted)', borderTop: '1px solid var(--border-subtle)', background: 'color-mix(in srgb, var(--bg-secondary) 30%, transparent)' }}
+                     >
                          <div className="mt-2">
                             Updates automatically as you modify the circuit.
                             <br/>
@@ -605,10 +613,13 @@ export const CircuitBoard: React.FC = () => {
         circuit={getGatesFromGrid()}
         numQubits={numQubits}
       />
-      {/* Floating drag overlay — prevents the palette from shifting */}
+      {/* Floating drag overlay */}
       <DragOverlay dropAnimation={null}>
         {activeGate ? (
-          <div className="w-12 h-12 flex items-center justify-center rounded-md border-2 border-cyan-400 bg-gray-800 text-cyan-50 font-bold shadow-lg shadow-cyan-500/30 pointer-events-none">
+          <div
+            className="w-12 h-12 flex items-center justify-center rounded-md border-2 font-bold shadow-lg pointer-events-none"
+            style={{ borderColor: 'var(--accent-primary)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
+          >
             {activeGate}
           </div>
         ) : null}
