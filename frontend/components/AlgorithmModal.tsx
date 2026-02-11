@@ -475,7 +475,7 @@ export default function AlgorithmModal({ isOpen, onClose, numQubits }: Algorithm
                             </div>
 
                             {/* Hamiltonian Terms (VQE) */}
-                            {algorithm === 'VQE' && vqeResult && vqeResult.hamiltonian_bases && vqeResult.hamiltonian_bases.length > 0 && (
+                            {algorithm === 'VQE' && vqeResult && vqeMode === 'maxcut' && vqeResult.hamiltonian_bases && vqeResult.hamiltonian_bases.length > 0 && (
                                 <div className="rounded-lg p-3" style={cardStyle}>
                                     <p className="text-[10px] uppercase mb-2" style={{ color: 'var(--text-muted)' }}>Hamiltonian Terms ({vqeResult.hamiltonian_bases.length})</p>
                                     <div className="flex flex-wrap gap-2">
@@ -502,8 +502,14 @@ export default function AlgorithmModal({ isOpen, onClose, numQubits }: Algorithm
                                             const v = symAdj[i][j] || symAdj[j][i];
                                             symAdj[i][j] = v; symAdj[j][i] = v;
                                         }
-                                    return <GraphVisualization adjacencyMatrix={symAdj} solutionBitstring={qaoaResult.most_likely_state}
-                                        title={`Solution Graph — |${qaoaResult.most_likely_state}⟩`} cluster0Label="Set A" cluster1Label="Set B" />;
+                                    return <div className="rounded-lg p-3" style={{ background: 'var(--bg-code)', border: '1px solid var(--border-primary)' }}>
+                                        <div className="flex items-center justify-between mb-2">
+                                            <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>{`Solution Graph — |${qaoaResult.most_likely_state}⟩`}</p>
+                                            <SaveBtn onClick={() => downloadChartAsPng('qaoa-solution-graph', 'qaoa_solution_graph')}/>
+                                        </div>
+                                        <GraphVisualization id="qaoa-solution-graph" adjacencyMatrix={symAdj} solutionBitstring={qaoaResult.most_likely_state}
+                                            cluster0Label="Set A" cluster1Label="Set B" />
+                                    </div>;
                                 }
                                 return null;
                             })()}
@@ -514,9 +520,14 @@ export default function AlgorithmModal({ isOpen, onClose, numQubits }: Algorithm
                                 try { adjMatrix = JSON.parse(vqeAdjStr); } catch {}
                                 if (adjMatrix.length > 0) {
                                     const displayMatrix = vqeInvert ? adjMatrix.map((row, i) => row.map((v, j) => i === j ? 0 : 1 - v)) : adjMatrix;
-                                    return <GraphVisualization adjacencyMatrix={displayMatrix} solutionBitstring={vqeResult.most_likely_state}
-                                        title={`MaxCut Solution${vqeInvert ? ' (inverted)' : ''} — |${vqeResult.most_likely_state}⟩`}
-                                        cluster0Label="Cluster A" cluster1Label="Cluster B" />;
+                                    return <div className="rounded-lg p-3" style={{ background: 'var(--bg-code)', border: '1px solid var(--border-primary)' }}>
+                                        <div className="flex items-center justify-between mb-2">
+                                            <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>{`MaxCut Solution${vqeInvert ? ' (inverted)' : ''} — |${vqeResult.most_likely_state}⟩`}</p>
+                                            <SaveBtn onClick={() => downloadChartAsPng('vqe-solution-graph', 'vqe_maxcut_solution_graph')}/>
+                                        </div>
+                                        <GraphVisualization id="vqe-solution-graph" adjacencyMatrix={displayMatrix} solutionBitstring={vqeResult.most_likely_state}
+                                            cluster0Label="Cluster A" cluster1Label="Cluster B" />
+                                    </div>;
                                 }
                                 return null;
                             })()}
@@ -667,8 +678,13 @@ export default function AlgorithmModal({ isOpen, onClose, numQubits }: Algorithm
                                 }
                                 if (walkAdj.length > 0) {
                                     const snapProbs = walkSnapshot?.probabilities || [];
-                                    return <GraphVisualization adjacencyMatrix={walkAdj} probabilities={snapProbs}
-                                        title={`Walk Graph — t = ${walkSnapshot?.time?.toFixed(2) ?? '0'}`} />;
+                                    return <div className="rounded-lg p-3" style={{ background: 'var(--bg-code)', border: '1px solid var(--border-primary)' }}>
+                                        <div className="flex items-center justify-between mb-2">
+                                            <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>{`Walk Graph — t = ${walkSnapshot?.time?.toFixed(2) ?? '0'}`}</p>
+                                            <SaveBtn onClick={() => downloadChartAsPng('walk-solution-graph', 'walk_graph')}/>
+                                        </div>
+                                        <GraphVisualization id="walk-solution-graph" adjacencyMatrix={walkAdj} probabilities={snapProbs} />
+                                    </div>;
                                 }
                                 return null;
                             })()}

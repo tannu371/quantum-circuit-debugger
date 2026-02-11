@@ -16,6 +16,8 @@ interface GraphVisualizationProps {
     probabilities?: number[];
     /** Title displayed above the graph. */
     title?: string;
+    /** Optional DOM id for PNG download targeting. */
+    id?: string;
     /** Width of the SVG canvas. */
     width?: number;
     /** Height of the SVG canvas. */
@@ -71,6 +73,7 @@ export default function GraphVisualization({
     solutionBitstring,
     probabilities,
     title,
+    id,
     width = 300,
     height = 260,
     cluster0Label = 'Cluster 0',
@@ -118,10 +121,7 @@ export default function GraphVisualization({
     const cutCount = edges.filter(e => e.cut).length;
 
     return (
-        <div
-          className="rounded-lg p-3"
-          style={{ background: 'var(--bg-code)', border: '1px solid var(--border-primary)' }}
-        >
+        <div id={id}>
             {title && <p className="text-xs mb-2 font-medium" style={{ color: 'var(--text-muted)' }}>{title}</p>}
             <svg width={width} height={height} className="mx-auto" viewBox={`0 0 ${width} ${height}`}>
                 <defs>
