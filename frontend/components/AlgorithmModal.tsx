@@ -4,6 +4,7 @@ import { X, Play, Loader2, Info, Code, Copy, Check, Download } from 'lucide-reac
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
 import clsx from 'clsx';
 import GraphVisualization from './GraphVisualization';
+import HighLevelCircuitDiagram from './HighLevelCircuitDiagram';
 
 interface AlgorithmModalProps {
     isOpen: boolean;
@@ -115,6 +116,7 @@ export default function AlgorithmModal({ isOpen, onClose, numQubits }: Algorithm
     const [codeTab, setCodeTab] = useState('qiskit');
     const [copied, setCopied] = useState(false);
     const [walkTimeIdx, setWalkTimeIdx] = useState(0);
+    const [circuitView, setCircuitView] = useState<'highlevel' | 'qiskit'>('highlevel');
 
     if (!isOpen) return null;
 
@@ -617,25 +619,61 @@ export default function AlgorithmModal({ isOpen, onClose, numQubits }: Algorithm
                                 );
                             })()}
 
-                            {/* Circuit Diagram */}
-                            {(activeResult as any).circuit_diagram && (
-                                <div className="rounded-lg p-3" style={{ background: 'var(--bg-code)', border: '1px solid var(--border-primary)' }}>
-                                    <div className="flex items-center justify-between mb-2">
+                            {/* Circuit Diagram — tabbed view */}
+                            <div className="rounded-lg p-3" style={{ background: 'var(--bg-code)', border: '1px solid var(--border-primary)' }}>
+                                <div className="flex items-center justify-between mb-2">
+                                    <div className="flex items-center gap-2">
                                         <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
-                                            {algorithm === 'QAOA' ? 'QAOA' : 'VQE Ansatz'} Circuit Diagram
+                                            {algorithm === 'QAOA' ? 'QAOA' : 'VQE Ansatz'} Circuit
                                         </p>
-                                        <SaveBtn onClick={() => downloadBase64Image((activeResult as any).circuit_diagram, `${algorithm}_circuit_diagram`)}/>
+                                        <div className="flex rounded-md p-0.5" style={{ background: 'var(--bg-input)' }}>
+                                            <button
+                                                onClick={() => setCircuitView('highlevel')}
+                                                className="px-2 py-0.5 text-[10px] rounded transition-colors font-medium"
+                                                style={{ background: circuitView === 'highlevel' ? 'var(--accent-secondary)' : 'transparent', color: circuitView === 'highlevel' ? 'white' : 'var(--text-muted)' }}
+                                            >High-Level</button>
+                                            <button
+                                                onClick={() => setCircuitView('qiskit')}
+                                                className="px-2 py-0.5 text-[10px] rounded transition-colors font-medium"
+                                                style={{ background: circuitView === 'qiskit' ? 'var(--accent-secondary)' : 'transparent', color: circuitView === 'qiskit' ? 'white' : 'var(--text-muted)' }}
+                                            >Qiskit</button>
+                                        </div>
                                     </div>
-                                    <div className="flex justify-center overflow-auto rounded" style={{ background: '#ffffff' }}>
-                                        <img
-                                            src={`data:image/png;base64,${(activeResult as any).circuit_diagram}`}
-                                            alt={`${algorithm} circuit diagram`}
-                                            className="max-w-full h-auto"
-                                            style={{ maxHeight: '300px' }}
+                                    <SaveBtn onClick={() =>
+                                        circuitView === 'qiskit' && (activeResult as any).circuit_diagram
+                                            ? downloadBase64Image((activeResult as any).circuit_diagram, `${algorithm}_qiskit_circuit`)
+                                            : downloadChartAsPng(`${algorithm}-high-level-circuit`, `${algorithm}_circuit_structure`)
+                                    }/>
+                                </div>
+
+                                {circuitView === 'highlevel' && (
+                                    <div className="flex justify-center overflow-auto rounded">
+                                        <HighLevelCircuitDiagram
+                                            id={`${algorithm}-high-level-circuit`}
+                                            algorithm={algorithm as 'QAOA' | 'VQE'}
+                                            numQubits={algorithm === 'QAOA' ? qaoaQubits : vqeQubits}
+                                            layers={algorithm === 'QAOA' ? pLayers : ansatzDepth}
                                         />
                                     </div>
-                                </div>
-                            )}
+                                )}
+
+                                {circuitView === 'qiskit' && (
+                                    (activeResult as any).circuit_diagram ? (
+                                        <div className="flex justify-center overflow-auto rounded" style={{ background: '#ffffff' }}>
+                                            <img
+                                                src={`data:image/png;base64,${(activeResult as any).circuit_diagram}`}
+                                                alt={`${algorithm} Qiskit circuit diagram`}
+                                                className="max-w-full h-auto"
+                                                style={{ maxHeight: '400px' }}
+                                            />
+                                        </div>
+                                    ) : (
+                                        <p className="text-center py-6 text-xs" style={{ color: 'var(--text-muted)' }}>
+                                            Qiskit circuit diagram not available for this run.
+                                        </p>
+                                    )
+                                )}
+                            </div>
                         </>)}
 
                         {/* Quantum Walk results */}
