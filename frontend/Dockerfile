@@ -7,4 +7,4 @@ RUN npm install
 
 COPY . .
 
-CMD ["npm", "run", "dev"]
+CMD ["sh", "-c", "next dev -p ${PORT:-8080}"]
