@@ -1,8 +1,9 @@
 @import "tailwindcss";
 
 /* ═══════════════════════════════════════════════════════════════
-   Design Tokens — Dark Theme (default)
+   Design Tokens — Default (Dark) applied on :root
    ═══════════════════════════════════════════════════════════════ */
+:root,
 [data-theme="dark"] {
   --bg-primary:    #030712;
   --bg-secondary:  #111827;

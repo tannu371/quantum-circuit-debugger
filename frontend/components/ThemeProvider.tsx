@@ -32,11 +32,15 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Read saved theme or system preference on mount
   useEffect(() => {
-    const saved = localStorage.getItem('qcd-theme') as Theme | null;
-    if (saved === 'light' || saved === 'dark') {
-      setTheme(saved);
-    } else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
-      setTheme('light');
+    try {
+      const saved = localStorage.getItem('qcd-theme') as Theme | null;
+      if (saved === 'light' || saved === 'dark') {
+        setTheme(saved);
+      } else if (window.matchMedia?.('(prefers-color-scheme: light)').matches) {
+        setTheme('light');
+      }
+    } catch {
+      // localStorage may not be available
     }
     setMounted(true);
   }, []);
@@ -45,17 +49,16 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     if (!mounted) return;
     document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('qcd-theme', theme);
+    try {
+      localStorage.setItem('qcd-theme', theme);
+    } catch {
+      // localStorage may not be available
+    }
   }, [theme, mounted]);
 
   const toggleTheme = useCallback(() => {
     setTheme(prev => (prev === 'dark' ? 'light' : 'dark'));
   }, []);
-
-  // Prevent flash — render children only after mount
-  if (!mounted) {
-    return <>{children}</>;
-  }
 
   return (
     <ThemeContext.Provider value={{ theme, toggleTheme }}>

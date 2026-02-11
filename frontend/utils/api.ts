@@ -73,6 +73,7 @@ export interface QAOAResponse {
     most_likely_state?: string;
     p_layers?: number;
     code?: Record<string, string>;
+    circuit_diagram?: string;
     message?: string;
     error?: string;
 }
@@ -88,6 +89,7 @@ export interface VQEResponse {
     most_likely_state?: string;
     ansatz_depth?: number;
     code?: Record<string, string>;
+    circuit_diagram?: string;
     hamiltonian_bases?: string[];
     hamiltonian_scales?: number[];
     message?: string;

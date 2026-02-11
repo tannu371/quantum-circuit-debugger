@@ -171,6 +171,7 @@ class VQEResponse(BaseModel):
     most_likely_state: Optional[str] = None
     ansatz_depth: Optional[int] = None
     code: Optional[Dict[str, str]] = None
+    circuit_diagram: Optional[str] = None
     hamiltonian_bases: Optional[List[str]] = None
     hamiltonian_scales: Optional[List[float]] = None
     message: Optional[str] = None
@@ -281,6 +282,7 @@ class QAOAResponse(BaseModel):
     most_likely_state: Optional[str] = None
     p_layers: Optional[int] = None
     code: Optional[Dict[str, str]] = None
+    circuit_diagram: Optional[str] = None
     message: Optional[str] = None
     error: Optional[str] = None
 

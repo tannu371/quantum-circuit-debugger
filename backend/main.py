@@ -40,6 +40,8 @@ from algorithms import (
     run_qaoa, generate_qaoa_code,
     run_quantum_walk, generate_walk_code, generate_graph,
 )
+from algorithms.qaoa import build_qaoa_circuit
+from algorithms.vqe import build_vqe_ansatz
 
 import traceback
 
@@ -332,6 +334,31 @@ async def run_qaoa_endpoint(request: QAOARequest):
                 linear_terms=request.linear_terms,
             )
 
+        # Generate circuit diagram
+        circuit_diagram = None
+        try:
+            import base64
+            from io import BytesIO
+            import matplotlib
+            matplotlib.use("Agg")
+
+            qc = build_qaoa_circuit(
+                num_qubits=request.num_qubits,
+                interaction_matrix=request.interaction_matrix,
+                gammas=result["optimal_gammas"],
+                betas=result["optimal_betas"],
+                linear_terms=request.linear_terms,
+            )
+            fig = qc.draw(output="mpl")
+            buf = BytesIO()
+            fig.savefig(buf, format="png", bbox_inches="tight", dpi=120)
+            buf.seek(0)
+            circuit_diagram = base64.b64encode(buf.read()).decode("utf-8")
+            import matplotlib.pyplot as plt
+            plt.close(fig)
+        except Exception:
+            pass  # diagram is optional, don't fail the request
+
         return QAOAResponse(
             status="completed",
             optimal_energy=result["optimal_energy"],
@@ -344,6 +371,7 @@ async def run_qaoa_endpoint(request: QAOARequest):
             most_likely_state=result["most_likely_state"],
             p_layers=result["p_layers"],
             code=code,
+            circuit_diagram=circuit_diagram,
             message=result.get("message"),
         )
     except Exception as e:
@@ -419,6 +447,29 @@ async def run_vqe_endpoint(request: VQERequest):
                     framework=fw,
                 )
 
+        # Generate circuit diagram
+        circuit_diagram = None
+        try:
+            import base64
+            from io import BytesIO
+            import matplotlib
+            matplotlib.use("Agg")
+            import numpy as np
+
+            ansatz, params = build_vqe_ansatz(n_qubits, request.ansatz_depth)
+            bound = ansatz.assign_parameters(
+                dict(zip(params, result["optimal_params"]))
+            )
+            fig = bound.draw(output="mpl")
+            buf = BytesIO()
+            fig.savefig(buf, format="png", bbox_inches="tight", dpi=120)
+            buf.seek(0)
+            circuit_diagram = base64.b64encode(buf.read()).decode("utf-8")
+            import matplotlib.pyplot as plt
+            plt.close(fig)
+        except Exception:
+            pass  # diagram is optional, don't fail the request
+
         return VQEResponse(
             status="completed",
             optimal_energy=result["optimal_energy"],
@@ -429,6 +480,7 @@ async def run_vqe_endpoint(request: VQERequest):
             most_likely_state=result["most_likely_state"],
             ansatz_depth=result["ansatz_depth"],
             code=code,
+            circuit_diagram=circuit_diagram,
             hamiltonian_bases=h_bases,
             hamiltonian_scales=h_scales,
             message=result.get("message"),

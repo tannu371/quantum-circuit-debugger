@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { runQAOA, runVQE, runQuantumWalk, QAOAResponse, VQEResponse, QuantumWalkResponse } from '../utils/api';
-import { X, Play, Loader2, Info, Code, Copy, Check } from 'lucide-react';
+import { X, Play, Loader2, Info, Code, Copy, Check, Download } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
 import clsx from 'clsx';
 import GraphVisualization from './GraphVisualization';
@@ -173,6 +173,44 @@ export default function AlgorithmModal({ isOpen, onClose, numQubits }: Algorithm
     const walkSnapshot = walkResult?.probability_evolution?.[walkTimeIdx];
     const walkBarData = walkSnapshot?.probabilities.map((p, i) => ({ vertex: `v${i}`, prob: parseFloat(p.toFixed(4)) })) || [];
 
+    const downloadChartAsPng = (containerId: string, filename: string) => {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        const svg = container.querySelector('svg');
+        if (!svg) return;
+        const svgData = new XMLSerializer().serializeToString(svg);
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        const img = new Image();
+        img.onload = () => {
+            canvas.width = img.width * 2;
+            canvas.height = img.height * 2;
+            ctx.scale(2, 2);
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0);
+            const a = document.createElement('a');
+            a.download = `${filename}.png`;
+            a.href = canvas.toDataURL('image/png');
+            a.click();
+        };
+        img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+    };
+
+    const downloadBase64Image = (base64: string, filename: string) => {
+        const a = document.createElement('a');
+        a.download = `${filename}.png`;
+        a.href = `data:image/png;base64,${base64}`;
+        a.click();
+    };
+
+    const SaveBtn = ({ onClick, label }: { onClick: () => void; label?: string }) => (
+        <button onClick={onClick} className="flex items-center gap-1 text-[10px] transition-colors hover:opacity-80" style={{ color: 'var(--text-muted)' }}>
+            <Download size={12}/> {label || 'Save'}
+        </button>
+    );
+
     return (
         <div className="fixed inset-0 backdrop-blur-sm z-50 flex items-center justify-center p-2 md:p-4" style={{ background: 'var(--bg-overlay)' }}>
             <div className="rounded-xl shadow-2xl w-full max-w-5xl h-[95vh] md:h-[85vh] flex flex-col md:flex-row overflow-hidden" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-secondary)' }}>
@@ -266,11 +304,7 @@ export default function AlgorithmModal({ isOpen, onClose, numQubits }: Algorithm
                                         className="accent-blue-500"/>
                                     <label htmlFor="vqe-invert" className="text-[10px]" style={{ color: 'var(--text-muted)' }}>Invert adjacency (use distance matrix 1−A)</label>
                                 </div>
-                                <div className="rounded-lg p-2 text-[10px] leading-relaxed" style={{ background: 'color-mix(in srgb, var(--accent-blue) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-blue) 30%, transparent)', color: 'var(--accent-blue)' }}>
-                                    <div className="flex items-center gap-1 mb-0.5 font-semibold"><Info size={12}/> MaxCut Clustering</div>
-                                    Builds Z⊗Z Hamiltonian from the graph. Vertices in state |0⟩ → Cluster A,
-                                    |1⟩ → Cluster B. Solution minimizes edges within clusters.
-                                </div>
+
                             </>)}
 
                             <div className="grid grid-cols-2 gap-2">
@@ -311,11 +345,7 @@ export default function AlgorithmModal({ isOpen, onClose, numQubits }: Algorithm
                             )}
                             <div><label className={labelCls} style={labelStyle}>Shots</label>
                                 <input type="number" value={shots} onChange={e => setShots(+e.target.value||1024)} className={inputCls} style={inputStyle} min={1}/></div>
-                            <div className="rounded-lg p-2 text-[10px] leading-relaxed" style={{ background: 'color-mix(in srgb, var(--accent-primary) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-primary) 30%, transparent)', color: 'var(--accent-primary)' }}>
-                                <div className="flex items-center gap-1 mb-0.5 font-semibold"><Info size={12}/> CTQW</div>
-                                <span className="font-mono">U(t) = e<sup>−iAt</sup></span> where <strong>A</strong> is the adjacency matrix.
-                                Tracks probability distribution over vertices at each time step.
-                            </div>
+
                         </>)}
 
                         {/* Shared optimizer */}
@@ -341,6 +371,64 @@ export default function AlgorithmModal({ isOpen, onClose, numQubits }: Algorithm
                             {isLoading ? <><Loader2 size={16} className="animate-spin"/> Running…</>
                                 : <><Play size={16}/> Run {algorithm === 'Walk' ? 'Quantum Walk' : algorithm}</>}
                         </button>
+                    </div>
+
+                    {/* Algorithm info notes — below Run button */}
+                    <div className="mt-3 space-y-2">
+                        {algorithm === 'QAOA' && (
+                            <div className="rounded-lg p-2.5 text-[10px] leading-relaxed" style={{ background: 'color-mix(in srgb, var(--accent-secondary) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-secondary) 30%, transparent)', color: 'var(--accent-secondary)' }}>
+                                <div className="flex items-center gap-1 mb-1 font-semibold"><Info size={12}/> What is QAOA?</div>
+                                <p style={{ color: 'var(--text-secondary)' }}>
+                                    <strong>Quantum Approximate Optimization Algorithm</strong> finds near-optimal solutions to combinatorial problems.
+                                    It encodes a problem (like MaxCut) into a <em>cost Hamiltonian</em> <span className="font-mono" style={{ color: 'var(--accent-secondary)' }}>H<sub>C</sub> = Σ J<sub>ij</sub> Z<sub>i</sub>Z<sub>j</sub> + Σ h<sub>i</sub> Z<sub>i</sub></span> and
+                                    alternates between cost and mixer layers, each with tunable angles <strong>γ</strong> (cost) and <strong>β</strong> (mixer).
+                                    A classical optimizer tunes these angles to minimize energy. The final measurement reveals the best solution found.
+                                </p>
+                                <p className="mt-1" style={{ color: 'var(--text-muted)' }}>
+                                    💡 <em>More layers (p) = better solutions but slower convergence. Start with p=1 for quick exploration.</em>
+                                </p>
+                            </div>
+                        )}
+                        {algorithm === 'VQE' && (
+                            <div className="rounded-lg p-2.5 text-[10px] leading-relaxed" style={{ background: 'color-mix(in srgb, var(--accent-blue) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-blue) 30%, transparent)', color: 'var(--accent-blue)' }}>
+                                <div className="flex items-center gap-1 mb-1 font-semibold"><Info size={12}/> What is VQE?</div>
+                                <p style={{ color: 'var(--text-secondary)' }}>
+                                    <strong>Variational Quantum Eigensolver</strong> finds the lowest-energy state of a quantum system.
+                                    It builds a Hamiltonian <span className="font-mono" style={{ color: 'var(--accent-blue)' }}>H = Σ c<sub>k</sub> · P<sub>k</sub></span> from Pauli strings (like <em>ZZ, XI, IY</em>) with
+                                    scalar coefficients. A parameterized quantum circuit (ansatz) prepares trial states, and a
+                                    classical optimizer adjusts the circuit parameters <strong>θ</strong> until the measured energy ⟨H⟩ is minimized.
+                                </p>
+                                <p className="mt-1" style={{ color: 'var(--text-muted)' }}>
+                                    💡 <em>In <strong>Hamiltonian</strong> mode, you specify Pauli terms directly. In <strong>MaxCut</strong> mode, VQE auto-builds a ZZ Hamiltonian from a graph to find the optimal partition.</em>
+                                </p>
+                            </div>
+                        )}
+                        {algorithm === 'VQE' && vqeMode === 'maxcut' && (
+                            <div className="rounded-lg p-2 text-[10px] leading-relaxed" style={{ background: 'color-mix(in srgb, var(--accent-green) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-green) 30%, transparent)', color: 'var(--accent-green)' }}>
+                                <div className="flex items-center gap-1 mb-0.5 font-semibold"><Info size={12}/> MaxCut Clustering</div>
+                                <p style={{ color: 'var(--text-secondary)' }}>
+                                    Builds a <span className="font-mono" style={{ color: 'var(--accent-green)' }}>Z⊗Z</span> Hamiltonian from the graph adjacency matrix.
+                                    Each qubit represents a vertex: <strong>|0⟩ → Cluster A</strong>, <strong>|1⟩ → Cluster B</strong>.
+                                    The optimizer finds a partition that <em>maximizes</em> the number of edges cut between the two clusters.
+                                </p>
+                                <p className="mt-1" style={{ color: 'var(--text-muted)' }}>💡 <em>Check "Invert adjacency" if your matrix represents similarities (1 = same group) instead of connections.</em></p>
+                            </div>
+                        )}
+                        {algorithm === 'Walk' && (
+                            <div className="rounded-lg p-2.5 text-[10px] leading-relaxed" style={{ background: 'color-mix(in srgb, var(--accent-primary) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-primary) 30%, transparent)', color: 'var(--accent-primary)' }}>
+                                <div className="flex items-center gap-1 mb-1 font-semibold"><Info size={12}/> What is a Quantum Walk?</div>
+                                <p style={{ color: 'var(--text-secondary)' }}>
+                                    A <strong>Continuous-Time Quantum Walk (CTQW)</strong> is the quantum analog of a classical random walk on a graph.
+                                    The walker evolves via <span className="font-mono" style={{ color: 'var(--accent-primary)' }}>U(t) = e<sup>−iAt</sup></span>, where <strong>A</strong> is the
+                                    graph's adjacency matrix. Unlike classical random walks that converge to a uniform distribution,
+                                    quantum walks exhibit <em>interference</em> — the probability amplitudes can constructively or destructively
+                                    combine, leading to faster spreading and non-trivial localization effects.
+                                </p>
+                                <p className="mt-1" style={{ color: 'var(--text-muted)' }}>
+                                    💡 <em>Watch the probability bars shift as you drag the time slider — notice how the walker "spreads" across connected vertices over time, unlike a classical random walk.</em>
+                                </p>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -452,8 +540,11 @@ export default function AlgorithmModal({ isOpen, onClose, numQubits }: Algorithm
 
                             {/* Convergence */}
                             <div className="rounded-lg p-3" style={{ background: 'var(--bg-code)', border: '1px solid var(--border-primary)' }}>
-                                <p className="text-xs mb-2 font-medium" style={{ color: 'var(--text-muted)' }}>Convergence</p>
-                                <div className="h-[180px]">
+                                <div className="flex items-center justify-between mb-2">
+                                    <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Convergence</p>
+                                    <SaveBtn onClick={() => downloadChartAsPng('convergence-chart', `${algorithm}_convergence`)}/>
+                                </div>
+                                <div id="convergence-chart" className="h-[180px]">
                                     <ResponsiveContainer width="100%" height="100%">
                                         <LineChart data={chartData}>
                                             <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)"/>
@@ -478,6 +569,59 @@ export default function AlgorithmModal({ isOpen, onClose, numQubits }: Algorithm
                                                     <p className="font-mono text-xs" style={{ color: 'var(--accent-primary)' }}>|{s}⟩</p>
                                                     <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{c}</p></div>
                                             ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Waveform Probabilities */}
+                            {(activeResult as any).probabilities && (activeResult as any).probabilities.length > 0 && (() => {
+                                const probs: number[] = (activeResult as any).probabilities;
+                                const numQ = algorithm === 'QAOA' ? qaoaQubits : vqeQubits;
+                                const probData = probs.map((p, i) => ({
+                                    state: `|${i.toString(2).padStart(numQ, '0')}⟩`,
+                                    prob: parseFloat(p.toFixed(6)),
+                                }));
+                                const PROB_COLORS = ['#8b5cf6', '#6366f1', '#3b82f6', '#06b6d4', '#14b8a6', '#10b981', '#22c55e', '#84cc16'];
+                                return (
+                                    <div className="rounded-lg p-3" style={{ background: 'var(--bg-code)', border: '1px solid var(--border-primary)' }}>
+                                        <div className="flex items-center justify-between mb-2">
+                                            <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Waveform Probabilities</p>
+                                            <SaveBtn onClick={() => downloadChartAsPng('waveform-prob-chart', `${algorithm}_waveform_probabilities`)}/>
+                                        </div>
+                                        <div id="waveform-prob-chart" className="h-[200px]">
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <BarChart data={probData}>
+                                                    <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)"/>
+                                                    <XAxis dataKey="state" stroke="var(--chart-axis)" fontSize={9} tickLine={false} axisLine={false} angle={-45} textAnchor="end" height={50}/>
+                                                    <YAxis stroke="var(--chart-axis)" fontSize={10} tickLine={false} axisLine={false} domain={[0, 'auto']}/>
+                                                    <Tooltip contentStyle={{ backgroundColor:'var(--tooltip-bg)', borderColor:'var(--tooltip-border)', color:'var(--tooltip-text)', fontSize:12 }}
+                                                        formatter={(value: number | string | undefined) => [typeof value === 'number' ? value.toFixed(6) : value, 'Probability']}/>
+                                                    <Bar dataKey="prob" radius={[4,4,0,0]}>
+                                                        {probData.map((_, i) => <Cell key={i} fill={PROB_COLORS[i % PROB_COLORS.length]}/>)}
+                                                    </Bar>
+                                                </BarChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+
+                            {/* Circuit Diagram */}
+                            {(activeResult as any).circuit_diagram && (
+                                <div className="rounded-lg p-3" style={{ background: 'var(--bg-code)', border: '1px solid var(--border-primary)' }}>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+                                            {algorithm === 'QAOA' ? 'QAOA' : 'VQE Ansatz'} Circuit Diagram
+                                        </p>
+                                        <SaveBtn onClick={() => downloadBase64Image((activeResult as any).circuit_diagram, `${algorithm}_circuit_diagram`)}/>
+                                    </div>
+                                    <div className="flex justify-center overflow-auto rounded" style={{ background: '#ffffff' }}>
+                                        <img
+                                            src={`data:image/png;base64,${(activeResult as any).circuit_diagram}`}
+                                            alt={`${algorithm} circuit diagram`}
+                                            className="max-w-full h-auto"
+                                            style={{ maxHeight: '300px' }}
+                                        />
                                     </div>
                                 </div>
                             )}
@@ -535,8 +679,9 @@ export default function AlgorithmModal({ isOpen, onClose, numQubits }: Algorithm
                                     <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
                                         Probability Distribution — t = {walkSnapshot?.time?.toFixed(2) ?? '0'}
                                     </p>
+                                    <SaveBtn onClick={() => downloadChartAsPng('walk-prob-dist', 'walk_probability_distribution')}/>
                                 </div>
-                                <div className="h-[200px]">
+                                <div id="walk-prob-dist" className="h-[200px]">
                                     <ResponsiveContainer width="100%" height="100%">
                                         <BarChart data={walkBarData}>
                                             <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)"/>
@@ -562,8 +707,11 @@ export default function AlgorithmModal({ isOpen, onClose, numQubits }: Algorithm
 
                             {/* Probability evolution */}
                             <div className="rounded-lg p-3" style={{ background: 'var(--bg-code)', border: '1px solid var(--border-primary)' }}>
-                                <p className="text-xs mb-2 font-medium" style={{ color: 'var(--text-muted)' }}>Probability Evolution</p>
-                                <div className="h-[200px]">
+                                <div className="flex items-center justify-between mb-2">
+                                    <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Probability Evolution</p>
+                                    <SaveBtn onClick={() => downloadChartAsPng('walk-prob-evo', 'walk_probability_evolution')}/>
+                                </div>
+                                <div id="walk-prob-evo" className="h-[200px]">
                                     <ResponsiveContainer width="100%" height="100%">
                                         <LineChart data={walkResult.probability_evolution?.map(snap => {
                                             const d: any = { time: snap.time };
